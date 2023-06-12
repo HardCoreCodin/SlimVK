@@ -6,6 +6,8 @@
 #include "../slim/renderer/renderer.h"
 #include "../slim/app.h"
 
+#include "../slim/vulkan/core/gpu.h"
+
 // Or using the single-header file:
 //#include "../slim.h"
 
@@ -50,6 +52,11 @@ struct ExampleApp : SlimApp {
                                 Cathedral_SkyboxColor,
                                 Cathedral_SkyboxRadiance,
                                 Cathedral_SkyboxIrradiance};
+
+    ExampleApp() {
+        gpu::init();
+        gpu::shutdown();
+    }
 
     void OnUpdate(f32 delta_time) override {
         projection.reset(camera, canvas.dimensions, canvas.antialias == SSAA);

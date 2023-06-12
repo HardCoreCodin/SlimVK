@@ -1,6 +1,5 @@
 #pragma once
 
-
 #include <vulkan/vulkan.h>
 
 #ifdef __linux__
@@ -9,21 +8,29 @@
 #include "../../platforms/win32_vulkan.h"
 #endif
 
+#include "../../core/logging.h"
+#include "../../core/assertion.h"
+
 #ifdef NDEBUG
-    #define VK_CHECK(expr)
+    #define VK_CHECK(expr) expr
     #define VK_SET_DEBUG_OBJECT_NAME(object_type, object_handle, object_name)
     #define VK_SET_DEBUG_OBJECT_TAG(object_type, object_handle, tag_size, tag_data)
     #define VK_BEGIN_DEBUG_LABEL(command_buffer, label_name, colour)
     #define VK_END_DEBUG_LABEL(command_buffer)
+    #define VK_DEBUG_EXTENSIONS
+    #define VK_VALIDATION_LAYERS
 #else
     #define VK_CHECK(expr) SLIM_ASSERT_DEBUG((expr) == VK_SUCCESS)
-    #define VK_SET_DEBUG_OBJECT_NAME(object_type, object_handle, object_name) debugger::setObjectName(object_type, object_handle, object_name)
-    #define VK_SET_DEBUG_OBJECT_TAG(object_type, object_handle, tag_size, tag_data) debugger::setObjectTag(object_type, object_handle, tag_size, tag_data)
-    #define VK_BEGIN_DEBUG_LABEL(command_buffer, label_name, colour) debugger::beginLabel(command_buffer, label_name, colour)
-    #define VK_END_DEBUG_LABEL(command_buffer) debugger::endLabel(command_buffer)
+    #define VK_SET_DEBUG_OBJECT_NAME(object_type, object_handle, object_name) _debug::setObjectName(object_type, object_handle, object_name)
+    #define VK_SET_DEBUG_OBJECT_TAG(object_type, object_handle, tag_size, tag_data) _debug::setObjectTag(object_type, object_handle, tag_size, tag_data)
+    #define VK_BEGIN_DEBUG_LABEL(command_buffer, label_name, colour) _debug::beginLabel(command_buffer, label_name, colour)
+    #define VK_END_DEBUG_LABEL(command_buffer) _debug::endLabel(command_buffer)
+    #define VK_DEBUG_EXTENSIONS VK_EXT_DEBUG_UTILS_EXTENSION_NAME
+    #define VK_VALIDATION_LAYERS "VK_LAYER_KHRONOS_validation"
 #endif
 
-#define VULKAN_MAX_PRESENTATION_MODES 8
+#define VULKAN_MAX_FRAMES_IN_FLIGHTS 3
+#define VULKAN_MAX_PRESENTATION_MODES 4
 #define VULKAN_MAX_SURFACE_FORMATS 512
 #define VULKAN_MAX_MATERIAL_COUNT 1024
 #define VULKAN_MAX_GEOMETRY_COUNT 4096
@@ -36,7 +43,165 @@
 #define VULKAN_SHADER_MAX_BINDINGS 2
 #define VULKAN_SHADER_MAX_PUSH_CONST_RANGES 32
 
-VKAPI_ATTR VkBool32 VKAPI_CALL vk_debug_callback(
+namespace gpu {
+    VkInstance instance;
+    VkPhysicalDevice physical_device;
+    VkDevice device;
+    VkSwapchainKHR swapchain;
+
+
+    VkQueue graphics_queue;
+    VkQueue compute_queue;
+    VkQueue present_queue;
+    VkQueue transfer_queue;
+
+    u32 graphics_queue_family_index = -1;
+    u32 compute_queue_family_index = -1;
+    u32 present_queue_family_index = -1;
+    u32 transfer_queue_family_index = -1;
+
+    VkCommandPool graphics_command_pool;
+//        vulkan_command_buffer* graphics_command_buffers; // The graphics command buffers, one per frame
+
+    VkSurfaceKHR surface;
+    VkSurfaceCapabilitiesKHR surface_capabilities;
+    VkSurfaceFormatKHR surface_formats[VULKAN_MAX_PRESENTATION_MODES];
+    unsigned int surface_format_count = 0;
+
+    VkPresentModeKHR present_modes[VULKAN_MAX_PRESENTATION_MODES];
+    unsigned int present_mode_count = 0;
+
+    VkFormat depth_format; // The chosen supported depth format
+    u8 depth_channel_count; // The chosen depth format's number of channels
+
+    u32 framebuffer_width = 800;
+    u32 framebuffer_height = 600;
+    u64 framebuffer_size_generation; // Current generation of framebuffer size. If it does not match framebuffer_size_last_generation, a new one should be generated
+    u64 framebuffer_size_last_generation; // The generation of the framebuffer when it was last created. Set to framebuffer_size_generation when updated
+
+    Rect viewport_rect;
+    Rect scissor_rect;
+
+    namespace _instance {
+        VkExtensionProperties available_extensions[256];
+        unsigned int available_extensions_count = 0;
+
+        const char* enabled_extension_names[] = {
+            VK_KHR_SURFACE_EXTENSION_NAME,
+            VK_WSI_SURFACE_EXTENSION_NAME,
+            VK_DEBUG_EXTENSIONS
+        };
+        const unsigned int enabled_extensions_count = sizeof(enabled_extension_names) / sizeof(char*);
+
+        VkLayerProperties available_validation_layers[8];
+        unsigned int available_validation_layers_count = 0;
+
+        const char* enabled_validation_layer_names[] = {
+            VK_VALIDATION_LAYERS
+        };
+        const unsigned int enabled_validation_layers_count = sizeof(enabled_validation_layer_names) / sizeof(char*);
+    }
+
+    namespace _device {
+        namespace requirements {
+            bool discrete_gpu = true;
+            bool graphics = true;
+            bool present = true;
+            bool compute = true;
+            bool transfer = true;
+            bool local_host_visible = true;
+            bool sampler_anisotropy = false;
+        }
+
+        VkPhysicalDeviceProperties properties;
+        VkPhysicalDeviceMemoryProperties memory_properties;
+        VkPhysicalDeviceFeatures features;
+
+        VkExtensionProperties available_extensions[256];
+        unsigned int available_extensions_count = 0;
+
+        const char* enabled_extension_names[] = {
+            VK_KHR_SWAPCHAIN_EXTENSION_NAME
+        };
+        const unsigned int enabled_extensions_count = sizeof(enabled_extension_names) / sizeof(char*);
+    }
+/*
+    namespace _swapchain {
+        VkSurfaceFormatKHR image_format;
+
+        // The maximum number of "images in flight" (images simultaneously being rendered to).
+        // Typically one less than the total number of images available.
+        u8 max_frames_in_flight;
+
+        renderer_config_flags flags; // Indicates various flags used for swapchain instantiation
+        VkSwapchainKHR handle; // The swapchain internal handle
+        unsigned int image_count; // @brief The number of swapchain images
+
+        texture* render_textures; // An array of render targets, which contain swapchain images
+        texture* depth_textures; // An array of depth textures, one per frame
+
+        //Render targets used for on-screen rendering, one per frame. The images contained in these are created and owned by the swapchain
+//        render_target render_targets[3];
+//        render_target world_render_targets[VULKAN_MAX_FRAMES_IN_FLIGHTS]; // Render targets used for world rendering. One per frame
+
+        VkSemaphore image_available_semaphores[VULKAN_MAX_FRAMES_IN_FLIGHTS]; // The semaphores used to indicate image availability, one per frame
+        VkSemaphore queue_complete_semaphores[VULKAN_MAX_FRAMES_IN_FLIGHTS]; // The semaphores used to indicate queue availability, one per frame
+        VkFence images_in_flight[VULKAN_MAX_FRAMES_IN_FLIGHTS]; // Holds pointers to fences which exist and are owned elsewhere, one per frame
+
+        const u32 in_flight_fence_count = VULKAN_MAX_FRAMES_IN_FLIGHTS - 1; // The current number of in-flight fences
+        VkFence in_flight_fences[VULKAN_MAX_FRAMES_IN_FLIGHTS - 1]; // The in-flight fences, used to indicate to the application when a frame is busy/ready
+
+        unsigned int image_index;   // The current image index
+        u32 current_frame; // The current frame
+
+        bool recreating_swapchain; // Indicates if the swapchain is currently being recreated
+        bool render_flag_changed;
+    }
+*/
+//    renderbuffer object_vertex_buffer; // The object vertex buffer, used to hold geometry vertices
+//    renderbuffer object_index_buffer;  // The object index buffer, used to hold geometry indices
+//    vulkan_geometry_data geometries[VULKAN_MAX_GEOMETRY_COUNT]; // A collection of loaded geometries
+
+    bool areStringsEqual(const char *src, const char *trg) {
+        bool equal = true;
+        unsigned int s = 0;
+        while (src[s]) {
+            if (src[s] != trg[s]) {
+                equal = false;
+                break;
+            }
+            s++;
+        }
+        return equal && !trg[s];
+    }
+
+    bool allEnabledExtensionsAreAvailable(
+        const char **enabled_extension_names, unsigned int enabled_extensions_count,
+        VkExtensionProperties *available_extensions, unsigned int available_extensions_count) {
+        for (unsigned int i = 0; i < enabled_extensions_count; ++i) {
+            const char* enabled_extension_name = enabled_extension_names[i];
+
+            bool found = false;
+            for (unsigned int j = 0; j < available_extensions_count; ++j) {
+                if (!areStringsEqual(enabled_extension_name, available_extensions[j].extensionName)) {
+                    found = true;
+                    SLIM_LOG_INFO("Found extension: %s...", enabled_extension_name);
+                    break;
+                }
+            }
+
+            if (!found) {
+                SLIM_LOG_FATAL("Required extension is missing: %s", enabled_extension_name);
+                return false;
+            }
+        }
+
+        return true;
+    }
+}
+
+
+VKAPI_ATTR VkBool32 VKAPI_CALL VulkanDebugCallback(
     VkDebugUtilsMessageSeverityFlagBitsEXT message_severity,
     VkDebugUtilsMessageTypeFlagsEXT message_types,
     const VkDebugUtilsMessengerCallbackDataEXT* callback_data,
@@ -53,7 +218,7 @@ VKAPI_ATTR VkBool32 VKAPI_CALL vk_debug_callback(
 }
 
 
-const char* vulkan_result_string(
+const char* getVulkanResultString(
     VkResult result, // The result to get the string for
     bool get_extended // Indicates whether to also return an extended result
     ) {
@@ -107,11 +272,10 @@ const char* vulkan_result_string(
     }
 }
 
-bool vulkan_result_is_success(VkResult result) {
-    // From: https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VkResult.html
-
-    // Inticates if the passed result is a success or an error as defined by the Vulkan spec.
-    // Returns True if success; otherwise false. Defaults to true for unknown result types.
+bool isVulkanResultSuccess(VkResult result) { // From: https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VkResult.html
+    // Inticates if the passed result is a success or an error as defined by the Vulkan spec
+    // Returns True if success, otherwise false
+    // Defaults to true for unknown result types
 
     switch (result) {
         // Success Codes
@@ -130,7 +294,7 @@ bool vulkan_result_is_success(VkResult result) {
         case VK_PIPELINE_COMPILE_REQUIRED_EXT:
             return true;
 
-            // Error codes
+        // Error codes
         case VK_ERROR_OUT_OF_HOST_MEMORY:
         case VK_ERROR_OUT_OF_DEVICE_MEMORY:
         case VK_ERROR_INITIALIZATION_FAILED:
@@ -157,17 +321,4 @@ bool vulkan_result_is_success(VkResult result) {
         case VK_ERROR_UNKNOWN:
             return false;
     }
-}
-
-bool areStringsEqual(const char *src, const char *trg) {
-    bool equal = true;
-    unsigned int s = 0;
-    while (src[s]) {
-        if (src[s] != trg[s]) {
-            equal = false;
-            break;
-        }
-        s++;
-    }
-    return equal && !trg[s];
 }

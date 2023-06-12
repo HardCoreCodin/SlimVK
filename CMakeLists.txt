@@ -1,11 +1,17 @@
 cmake_minimum_required(VERSION 3.11)
 
-find_package(Vulkan REQUIRED)
-include_directories(${PROJECT_NAME} PUBLIC ${Vulkan_INCLUDE_DIRS})
-link_libraries(${PROJECT_NAME} Vulkan::Vulkan)
+#find_package(Vulkan REQUIRED)
+include_directories(PUBLIC "C:/VulkanSDK/1.3.250.0/include")
+#include_directories(PUBLIC ${Vulkan_INCLUDE_DIRS})
+#link_directories(${VULKAN_PATH}/Bin;${VULKAN_PATH}/Lib;)
+#link_libraries(${PROJECT_NAME} Vulkan::Vulkan)
+
 
 project(01_Lights)
+#target_link_libraries(01_Lights vulkan-1.dll)
 add_executable(01_Lights WIN32 src/examples/01_Lights.cpp)
+target_link_libraries(01_Lights "C:/VulkanSDK/1.3.250.0/Lib/vulkan-1.lib")
+#target_link_libraries(01_Lights vulkan-1)
 
 project(02_Geometry)
 add_executable(02_Geometry WIN32 src/examples/02_Geometry.cpp)

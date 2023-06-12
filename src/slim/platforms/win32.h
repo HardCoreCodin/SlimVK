@@ -184,10 +184,6 @@ int APIENTRY WinMain(HINSTANCE hInstance,
     timers::microseconds_per_tick = 1000.0 * timers::milliseconds_per_tick;
     timers::nanoseconds_per_tick  = 1000.0 * timers::microseconds_per_tick;
 
-    CURRENT_APP = createApp();
-    if (!CURRENT_APP->is_running)
-        return -1;
-
     Win32_bitmap_info.bmiHeader.biSize        = sizeof(Win32_bitmap_info.bmiHeader);
     Win32_bitmap_info.bmiHeader.biCompression = BI_RGB;
     Win32_bitmap_info.bmiHeader.biBitCount    = 32;
@@ -228,6 +224,10 @@ int APIENTRY WinMain(HINSTANCE hInstance,
     Win32_raw_input_device.usUsagePage = 0x01;
     Win32_raw_input_device.usUsage = 0x02;
     if (!RegisterRawInputDevices(&Win32_raw_input_device, 1, sizeof(Win32_raw_input_device)))
+        return -1;
+
+    CURRENT_APP = createApp();
+    if (!CURRENT_APP->is_running)
         return -1;
 
     Win32_window_dc = GetDC(Win32_window);

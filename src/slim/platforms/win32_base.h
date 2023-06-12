@@ -24,7 +24,8 @@ UINT Win32_raw_input_size;
 PUINT Win32_raw_input_size_ptr = (PUINT)(&Win32_raw_input_size);
 UINT Win32_raw_input_header_size = sizeof(RAWINPUTHEADER);
 
-void DisplayError(LPTSTR lpszFunction) {
+
+void Win32_DisplayError(LPTSTR lpszFunction) {
     LPVOID lpMsgBuf;
     LPVOID lpDisplayBuf;
     unsigned int last_error = GetLastError();
@@ -64,7 +65,7 @@ void* win32_openFileForReading(const char* path) {
                                 nullptr);                 // no attr. template
 #ifndef NDEBUG
     if (handle == INVALID_HANDLE_VALUE) {
-        DisplayError((LPTSTR)"CreateFile");
+        Win32_DisplayError((LPTSTR)"CreateFile");
         _tprintf((LPTSTR)"Terminal failure: unable to open file \"%s\" for read.\n", path);
         return nullptr;
     }
@@ -82,7 +83,7 @@ void* win32_openFileForWriting(const char* path) {
                                 nullptr);
 #ifndef NDEBUG
     if (handle == INVALID_HANDLE_VALUE) {
-        DisplayError((LPTSTR)"CreateFile");
+        Win32_DisplayError((LPTSTR)"CreateFile");
         _tprintf((LPTSTR)"Terminal failure: unable to open file \"%s\" for write.\n", path);
         return nullptr;
     }
@@ -95,7 +96,7 @@ bool win32_readFromFile(LPVOID out, DWORD size, HANDLE handle) {
     BOOL result = ReadFile(handle, out, size, &bytes_read, nullptr);
 #ifndef NDEBUG
     if (result == FALSE) {
-        DisplayError((LPTSTR)"ReadFile");
+        Win32_DisplayError((LPTSTR)"ReadFile");
         printf("Terminal failure: Unable to read from file.\n GetLastError=%08x\n", (unsigned int)GetLastError());
         CloseHandle(handle);
     }
@@ -108,7 +109,7 @@ bool win32_writeToFile(LPVOID out, DWORD size, HANDLE handle) {
     BOOL result = WriteFile(handle, out, size, &bytes_written, nullptr);
 #ifndef NDEBUG
     if (result == FALSE) {
-        DisplayError((LPTSTR)"WriteFile");
+        Win32_DisplayError((LPTSTR)"WriteFile");
         printf("Terminal failure: Unable to write to file.\n GetLastError=%08x\n", (unsigned int)GetLastError());
         CloseHandle(handle);
     }
@@ -146,3 +147,34 @@ void* os::openFileForReading(const char* path) { return win32_openFileForReading
 void* os::openFileForWriting(const char* path) { return win32_openFileForWriting(path); }
 bool os::readFromFile(LPVOID out, DWORD size, HANDLE handle) { return win32_readFromFile(out, size, handle); }
 bool os::writeToFile(LPVOID out, DWORD size, HANDLE handle) { return win32_writeToFile(out, size, handle); }
+
+void os::print(const char *message, u8 color) {
+    HANDLE console_handle = GetStdHandle(STD_OUTPUT_HANDLE);
+    // FATAL,ERROR,WARN,INFO,DEBUG,TRACE
+    static u8 levels[6] = {64, 4, 6, 2, 1, 8};
+    SetConsoleTextAttribute(console_handle, levels[color]);
+    OutputDebugStringA(message);
+    u64 length = strlen(message);
+    DWORD number_written = 0;
+    WriteConsoleA(GetStdHandle(STD_OUTPUT_HANDLE), message, (DWORD)length, &number_written, 0);
+
+    CONSOLE_SCREEN_BUFFER_INFO csbi;
+    GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &csbi);
+    SetConsoleTextAttribute(console_handle, csbi.wAttributes);
+}
+
+void os::printError(const char *message, u8 color) {
+    HANDLE console_handle = GetStdHandle(STD_ERROR_HANDLE);
+
+    // FATAL,ERROR,WARN,INFO,DEBUG,TRACE
+    static u8 levels[6] = {64, 4, 6, 2, 1, 8};
+    SetConsoleTextAttribute(console_handle, levels[color]);
+    OutputDebugStringA(message);
+    u64 length = strlen(message);
+    DWORD number_written = 0;
+    WriteConsoleA(GetStdHandle(STD_ERROR_HANDLE), message, (DWORD)length, &number_written, 0);
+
+    CONSOLE_SCREEN_BUFFER_INFO csbi;
+    GetConsoleScreenBufferInfo(GetStdHandle(STD_ERROR_HANDLE), &csbi);
+    SetConsoleTextAttribute(console_handle, csbi.wAttributes);
+}

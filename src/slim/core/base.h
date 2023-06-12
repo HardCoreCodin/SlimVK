@@ -58,19 +58,6 @@
         #define XPU
     #endif
 
-    #ifdef NDEBUG
-        #define SLIM_ASSERT_DEBUG(expr)
-    #else
-        #if defined(COMPILER_MSVC)
-            #include <intrin.h>
-            #define debugBreak() __debugbreak()
-        #else
-            #define debugBreak() __builtin_trap()
-        #endif
-
-        #define SLIM_ASSERT_DEBUG(expr) if (!(expr)) debugBreak()
-    #endif
-
     #ifndef INLINE
         #if (defined(SLIMMER) || !defined(NDEBUG))
             #define INLINE
@@ -114,6 +101,21 @@
 
 #ifndef signbit
     #define signbit std::signbit
+#endif
+
+//#define SLIM_EXPORT
+#ifdef SLIM_EXPORT
+    #if defined(COMPILER_CLANG)
+        #define SLIM_API __declspec(dllexport)
+    #else
+        #define SLIM_API __attribute__((visibility("default")))
+    #endif
+#else
+    #if defined(COMPILER_CLANG)
+        #define SLIM_API __declspec(dllimport)
+    #else
+        #define SLIM_API
+    #endif
 #endif
 
 typedef unsigned char      u8;
@@ -1385,6 +1387,8 @@ namespace os {
     void* openFileForWriting(const char* file_path);
     bool readFromFile(void *out, unsigned long, void *handle);
     bool writeToFile(void *out, unsigned long, void *handle);
+    void print(const char *message, u8 color);
+    void printError(const char *message, u8 color);
 }
 
 namespace timers {
