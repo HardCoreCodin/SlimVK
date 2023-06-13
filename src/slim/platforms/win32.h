@@ -150,11 +150,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
     return 0;
 }
 
-int APIENTRY WinMain(HINSTANCE hInstance,
-                     HINSTANCE hPrevInstance,
-                     LPSTR     lpCmdLine,
-                     int       nCmdShow) {
-
+int Win32_EntryPoint(HINSTANCE hInstance, int nCmdShow = SW_SHOW) {
     Win32_instance = hInstance;
 
     void* window_content_and_canvas_memory = GlobalAlloc(GPTR, WINDOW_CONTENT_SIZE + (CANVAS_SIZE * CANVAS_COUNT));
@@ -248,4 +244,70 @@ int APIENTRY WinMain(HINSTANCE hInstance,
     }
 
     return 0;
+}
+
+int main(int argc, char **argv) {
+    return Win32_EntryPoint(GetModuleHandleA(nullptr));
+}
+int APIENTRY WinMain(HINSTANCE hInstance,
+                     HINSTANCE hPrevInstance,
+                     LPSTR     lpCmdLine,
+                     int       nCmdShow) {
+    int argc = __argc;
+    char **argv = __argv;
+    UNREFERENCED_PARAMETER(hInstance);
+    UNREFERENCED_PARAMETER(hPrevInstance);
+    UNREFERENCED_PARAMETER(lpCmdLine);
+    UNREFERENCED_PARAMETER(nCmdShow);
+
+    // Is the program running as console or GUI application
+    bool is_console = false;
+
+    // Attach output of application to parent console
+    HANDLE consoleHandleOut, consoleHandleError;
+    if (AttachConsole(ATTACH_PARENT_PROCESS)) {
+        // Redirect unbuffered STDOUT to the console
+        consoleHandleOut = GetStdHandle(STD_OUTPUT_HANDLE);
+        if (consoleHandleOut != INVALID_HANDLE_VALUE) {
+            freopen("CONOUT$", "w", stdout);
+            setvbuf(stdout, NULL, _IONBF, 0);
+
+            // Redirect unbuffered STDERR to the console
+            consoleHandleError = GetStdHandle(STD_ERROR_HANDLE);
+            if (consoleHandleError != INVALID_HANDLE_VALUE) {
+                freopen("CONOUT$", "w", stderr);
+                setvbuf(stderr, NULL, _IONBF, 0);
+
+                is_console = true;
+            }
+        }
+    }
+
+    int return_code = Win32_EntryPoint(hInstance, nCmdShow);
+
+    // Send "enter" to release application from the console
+    // This is a hack, but if not used the console doesn't know the application has
+    // returned. The "enter" key only sent if the console window is in focus.
+    if (is_console && (GetConsoleWindow() == GetForegroundWindow())) {
+        // Send the "enter" to the console to release the command prompt
+        // on the parent console
+        INPUT ip;
+
+        // Set up a generic keyboard event.
+        ip.type = INPUT_KEYBOARD;
+        ip.ki.wScan = 0; // hardware scan code for key
+        ip.ki.time = 0;
+        ip.ki.dwExtraInfo = 0;
+
+        // Send the "Enter" key
+        ip.ki.wVk = 0x0D; // virtual-key code for the "Enter" key
+        ip.ki.dwFlags = 0; // 0 for key press
+        SendInput(1, &ip, sizeof(INPUT));
+
+        // Release the "Enter" key
+        ip.ki.dwFlags = KEYEVENTF_KEYUP; // KEYEVENTF_KEYUP for key release
+        SendInput(1, &ip, sizeof(INPUT));
+    }
+
+    return return_code;
 }

@@ -29,16 +29,16 @@ enum SlimLogLevel {
 
 
 const char* SLIM_LOG_LEVEL_NAMES[6] = {
-    "[FATAL]: ",
-    "[ERROR]: ",
-    "[WARN ]: ",
-    "[INFO ]: ",
-    "[DEBUG]: ",
-    "[TRACE]: "
+    "\n[FATAL]: ",
+    "\n[ERROR]: ",
+    "\n[WARN ]: ",
+    "\n[INFO ]: ",
+    "\n[DEBUG]: ",
+    "\n[TRACE]: "
 };
 
 #define SLIM_LOG_MESSAGE_BUFFER_LENGTH (16*1024)
-#define SLIM_LOG_MESSAGE_PREFIX_LENGTH 8
+#define SLIM_LOG_MESSAGE_PREFIX_LENGTH 9
 #define SLIM_LOG_MESSAGE_FORMAT_LENGTH (SLIM_LOG_MESSAGE_BUFFER_LENGTH - SLIM_LOG_MESSAGE_PREFIX_LENGTH)
 
 char SLIM_LOG_MESSAGE_BUFFER[SLIM_LOG_MESSAGE_BUFFER_LENGTH];
@@ -47,12 +47,13 @@ char* SLIM_LOG_FORMAT_BUFFER = SLIM_LOG_MESSAGE_BUFFER + SLIM_LOG_MESSAGE_PREFIX
 //SLIM_API
 void SLIM_LOG(SlimLogLevel log_level, const char* msg, ...) {
     bool is_error = log_level < SLIM_LOG_LEVEL_WARNING;
-    for (int i = 0; i < 8; i++) SLIM_LOG_MESSAGE_BUFFER[i] = SLIM_LOG_LEVEL_NAMES[log_level][i];
+    for (int i = 0; i < SLIM_LOG_MESSAGE_PREFIX_LENGTH; i++) SLIM_LOG_MESSAGE_BUFFER[i] = SLIM_LOG_LEVEL_NAMES[log_level][i];
 
     va_list arg_ptr;
 //    __builtin_va_list arg_ptr;
     va_start(arg_ptr, msg);
-    SLIM_LOG_FORMAT_BUFFER[vsnprintf(SLIM_LOG_FORMAT_BUFFER, SLIM_LOG_MESSAGE_FORMAT_LENGTH, msg, arg_ptr)] = 0;
+    int len = vsnprintf(SLIM_LOG_FORMAT_BUFFER, SLIM_LOG_MESSAGE_FORMAT_LENGTH, msg, arg_ptr);
+    SLIM_LOG_FORMAT_BUFFER[len] = 0;
     va_end(arg_ptr);
 
     // Prepend log level to message.
