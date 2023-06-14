@@ -25,6 +25,42 @@ namespace gpu {
             return -1;
         }
 
+        void querySupportForSurfaceFormatsAndPresentModes() {
+            VK_CHECK(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, surface, &surface_capabilities))
+            VK_CHECK(vkGetPhysicalDeviceSurfaceFormatsKHR( physical_device, surface, &surface_format_count, nullptr))
+            VK_CHECK(vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &present_mode_count, nullptr))
+            if (surface_format_count != 0) VK_CHECK(vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &surface_format_count, surface_formats))
+            if (  present_mode_count != 0) VK_CHECK(vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &present_mode_count, present_modes))
+        }
+
+        bool querySupportForDepthFormats() {
+            const u64 candidate_count = 3;
+            VkFormat candidates[3] = {
+                VK_FORMAT_D32_SFLOAT,
+                VK_FORMAT_D32_SFLOAT_S8_UINT,
+                VK_FORMAT_D24_UNORM_S8_UINT
+            };
+            u8 sizes[3] = {4, 4, 3};
+
+            u32 flags = VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT;
+            for (u64 i = 0; i < candidate_count; ++i) {
+                VkFormatProperties depth_format_properties;
+                vkGetPhysicalDeviceFormatProperties(physical_device, candidates[i], &depth_format_properties);
+
+                if ((depth_format_properties.linearTilingFeatures & flags) == flags) {
+                    depth_format = candidates[i];
+                    depth_channel_count = sizes[i];
+                    return true;
+                } else if ((depth_format_properties.optimalTilingFeatures & flags) == flags) {
+                    depth_format = candidates[i];
+                    depth_channel_count = sizes[i];
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         bool currentPhysicalDeviceMeetsTheRequirements() {
             graphics_queue_family_index = -1;
             present_queue_family_index = -1;
@@ -70,7 +106,7 @@ namespace gpu {
 
                     // If also a present queue, this prioritizes grouping of the 2.
                     VkBool32 supports_present = VK_FALSE;
-                    VK_CHECK(vkGetPhysicalDeviceSurfaceSupportKHR(physical_device, i, surface, &supports_present));
+                    VK_CHECK(vkGetPhysicalDeviceSurfaceSupportKHR(physical_device, i, _device::surface, &supports_present));
                     if (supports_present) {
                         present_queue_family_index = i;
                         current_transfer_score++;
@@ -99,7 +135,7 @@ namespace gpu {
             if (present_queue_family_index == -1) {
                 for (unsigned int i = 0; i < queue_family_count; ++i) {
                     VkBool32 supports_present = VK_FALSE;
-                    VK_CHECK(vkGetPhysicalDeviceSurfaceSupportKHR(physical_device, i, surface, &supports_present));
+                    VK_CHECK(vkGetPhysicalDeviceSurfaceSupportKHR(physical_device, i, _device::surface, &supports_present));
                     if (supports_present) {
                         present_queue_family_index = i;
 
@@ -131,59 +167,11 @@ namespace gpu {
                 SLIM_LOG_TRACE("Transfer Queue Family Index: %i", transfer_queue_family_index);
                 SLIM_LOG_TRACE("Compute Queue Family Index:  %i", compute_queue_family_index);
 
-                VK_CHECK(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, surface, &surface_capabilities));
-                VK_CHECK(vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &surface_format_count, 0));
-                if (surface_format_count) {
-                    VK_CHECK(vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &surface_format_count, surface_formats));
-
-
-                } else {
-                    SLIM_LOG_INFO("No surface formats - skipping this device");
-                    return false;
-                }
-
-                // Present modes
-                VK_CHECK(vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &present_mode_count, 0));
-                if (present_mode_count)
-                    VK_CHECK(vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &present_mode_count, present_modes));
-
-                if (surface_format_count < 1 ||
-                    present_mode_count < 1) {
+                _device::querySupportForSurfaceFormatsAndPresentModes();
+                if (_device::surface_format_count < 1 ||
+                    _device::present_mode_count < 1) {
                     SLIM_LOG_INFO("Swap chain unsupported - skipping this device");
                     return false;
-                }
-
-                // Format candidates
-                const u64 depth_format_candidates_count = 3;
-                VkFormat candidates[3] = {
-                    VK_FORMAT_D32_SFLOAT,
-                    VK_FORMAT_D32_SFLOAT_S8_UINT,
-                    VK_FORMAT_D24_UNORM_S8_UINT
-                };
-                u8 sizes[3] = {4, 4, 3};
-
-                u32 flags = VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT;
-                bool found_depth_format = false;
-                for (u64 i = 0; i < depth_format_candidates_count; ++i) {
-                    VkFormatProperties format_properties;
-                    vkGetPhysicalDeviceFormatProperties(physical_device, candidates[i], &format_properties);
-
-                    if ((format_properties.linearTilingFeatures & flags) == flags) {
-                        depth_format = candidates[i];
-                        depth_channel_count = sizes[i];
-                        found_depth_format = true;
-                        break;
-                    } else if ((format_properties.optimalTilingFeatures & flags) == flags) {
-                        depth_format = candidates[i];
-                        depth_channel_count = sizes[i];
-                        found_depth_format = true;
-                        break;
-                    }
-                }
-
-                if (found_depth_format) {
-                    depth_format = VK_FORMAT_UNDEFINED;
-                    SLIM_LOG_FATAL("Failed to find a supported depth format - skipping this device");
                 }
 
                 if (requirements::sampler_anisotropy && !features.samplerAnisotropy) {

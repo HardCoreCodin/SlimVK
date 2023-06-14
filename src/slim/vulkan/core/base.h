@@ -30,7 +30,7 @@
 #endif
 
 #define VULKAN_MAX_FRAMES_IN_FLIGHTS 3
-#define VULKAN_MAX_PRESENTATION_MODES 4
+#define VULKAN_MAX_PRESENTATION_MODES 8
 #define VULKAN_MAX_SURFACE_FORMATS 512
 #define VULKAN_MAX_MATERIAL_COUNT 1024
 #define VULKAN_MAX_GEOMETRY_COUNT 4096
@@ -42,13 +42,55 @@
 #define VULKAN_SHADER_MAX_UNIFORMS 128
 #define VULKAN_SHADER_MAX_BINDINGS 2
 #define VULKAN_SHADER_MAX_PUSH_CONST_RANGES 32
+#define TEXTURE_NAME_MAX_LENGTH 512
+
+//
+//typedef enum memory_tag {
+//    // For temporary use. Should be assigned one of the below or have a new tag created.
+//    MEMORY_TAG_UNKNOWN,
+//    MEMORY_TAG_ARRAY,
+//    MEMORY_TAG_LINEAR_ALLOCATOR,
+//    MEMORY_TAG_DARRAY,
+//    MEMORY_TAG_DICT,
+//    MEMORY_TAG_RING_QUEUE,
+//    MEMORY_TAG_BST,
+//    MEMORY_TAG_STRING,
+//    MEMORY_TAG_ENGINE,
+//    MEMORY_TAG_JOB,
+//    MEMORY_TAG_TEXTURE,
+//    MEMORY_TAG_MATERIAL_INSTANCE,
+//    MEMORY_TAG_RENDERER,
+//    MEMORY_TAG_GAME,
+//    MEMORY_TAG_TRANSFORM,
+//    MEMORY_TAG_ENTITY,
+//    MEMORY_TAG_ENTITY_NODE,
+//    MEMORY_TAG_SCENE,
+//    MEMORY_TAG_RESOURCE,
+//    MEMORY_TAG_VULKAN,
+//    // "External" vulkan allocations, for reporting purposes only.
+//    MEMORY_TAG_VULKAN_EXT,
+//    MEMORY_TAG_DIRECT3D,
+//    MEMORY_TAG_OPENGL,
+//    // Representation of GPU-local/vram
+//    MEMORY_TAG_GPU_LOCAL,
+//    MEMORY_TAG_BITMAP_FONT,
+//    MEMORY_TAG_SYSTEM_FONT,
+//    MEMORY_TAG_KEYMAP,
+//    MEMORY_TAG_HASHTABLE,
+//
+//    MEMORY_TAG_MAX_TAGS
+//}
+
+enum TextureType {
+    TextureType_2D, // @brief A standard two-dimensional texture
+    TextureType_CubeMap // A cube texture, used for cubemaps
+};
 
 namespace gpu {
     VkInstance instance;
     VkPhysicalDevice physical_device;
     VkDevice device;
     VkSwapchainKHR swapchain;
-
 
     VkQueue graphics_queue;
     VkQueue compute_queue;
@@ -63,16 +105,6 @@ namespace gpu {
     VkCommandPool graphics_command_pool;
 //        vulkan_command_buffer* graphics_command_buffers; // The graphics command buffers, one per frame
 
-    VkSurfaceKHR surface;
-    VkSurfaceCapabilitiesKHR surface_capabilities;
-    VkSurfaceFormatKHR surface_formats[VULKAN_MAX_PRESENTATION_MODES];
-    unsigned int surface_format_count = 0;
-
-    VkPresentModeKHR present_modes[VULKAN_MAX_PRESENTATION_MODES];
-    unsigned int present_mode_count = 0;
-
-    VkFormat depth_format; // The chosen supported depth format
-    u8 depth_channel_count; // The chosen depth format's number of channels
 
     u32 framebuffer_width = 800;
     u32 framebuffer_height = 600;
@@ -117,6 +149,17 @@ namespace gpu {
         VkPhysicalDeviceMemoryProperties memory_properties;
         VkPhysicalDeviceFeatures features;
 
+        VkFormat depth_format; // The chosen supported depth format
+        u8 depth_channel_count; // The chosen depth format's number of channels
+
+        VkSurfaceKHR surface;
+        VkSurfaceCapabilitiesKHR surface_capabilities;
+        VkSurfaceFormatKHR surface_formats[VULKAN_MAX_SURFACE_FORMATS];
+        unsigned int surface_format_count = 0;
+
+        VkPresentModeKHR present_modes[VULKAN_MAX_PRESENTATION_MODES];
+        unsigned int present_mode_count = 0;
+
         VkExtensionProperties available_extensions[256];
         unsigned int available_extensions_count = 0;
 
@@ -124,40 +167,76 @@ namespace gpu {
             VK_KHR_SWAPCHAIN_EXTENSION_NAME
         };
         const unsigned int enabled_extensions_count = sizeof(enabled_extension_names) / sizeof(char*);
+
+        i32 getMemoryIndex(
+            u32 type_filter, // The memory types to find
+            u32 property_flags // Memory properties that need to exist
+        );
     }
-/*
+
+    struct CommandBuffer;
+
+    struct Image {
+        VkImage handle;
+        VkDeviceMemory memory;
+        VkImageView view;
+        VkMemoryRequirements memory_requirements;
+        VkMemoryPropertyFlags memory_flags;
+        u32 width;
+        u32 height;
+        char* name;
+
+        void create(TextureType type, u32 width, u32 height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags memory_flags, bool create_view, VkImageAspectFlags view_aspect_flags, const char* name);
+        void createView(TextureType type, VkFormat format, VkImageAspectFlags aspect_flags);
+//        void transitionLayout(TextureType type, CommandBuffer &command_buffer, VkFormat format, VkImageLayout old_layout, VkImageLayout new_layout);
+//        void copyFromBuffer(TextureType type, VkBuffer buffer, CommandBuffer &command_buffer);
+//        void copyToBuffer(TextureType type, VkBuffer buffer, CommandBuffer &command_buffer);
+//        void copyPixelToBuffer(TextureType type, VkBuffer buffer, u32 x, u32 y, CommandBuffer &command_buffer);
+        void destroy();
+    };
+
     namespace _swapchain {
+        enum SwapchainConfig {
+            SwapchainConfig_VSync = 0x1,
+            SwapchainConfig_PowerSaving  = 0x2
+        };
+
         VkSurfaceFormatKHR image_format;
+        VkPresentModeKHR present_mode;
 
         // The maximum number of "images in flight" (images simultaneously being rendered to).
         // Typically one less than the total number of images available.
-        u8 max_frames_in_flight;
+        u8 max_frames_in_flight = 1;
 
-        renderer_config_flags flags; // Indicates various flags used for swapchain instantiation
-        VkSwapchainKHR handle; // The swapchain internal handle
-        unsigned int image_count; // @brief The number of swapchain images
+        SwapchainConfig config; // Indicates various flags used for swapchain instantiation
+        unsigned int image_count = 0; // The number of swapchain images
+        unsigned int image_index = 0;   // The current image index
 
-        texture* render_textures; // An array of render targets, which contain swapchain images
-        texture* depth_textures; // An array of depth textures, one per frame
+//        texture* render_textures; // An array of render targets, which contain swapchain images
+//        texture* depth_textures; // An array of depth textures, one per frame
 
         //Render targets used for on-screen rendering, one per frame. The images contained in these are created and owned by the swapchain
 //        render_target render_targets[3];
 //        render_target world_render_targets[VULKAN_MAX_FRAMES_IN_FLIGHTS]; // Render targets used for world rendering. One per frame
 
+        Image images[VULKAN_MAX_FRAMES_IN_FLIGHTS];
+        Image depth_images[VULKAN_MAX_FRAMES_IN_FLIGHTS];
+//        VkImage images[VULKAN_MAX_FRAMES_IN_FLIGHTS];
+//        VkImageView image_views[VULKAN_MAX_FRAMES_IN_FLIGHTS];
+
         VkSemaphore image_available_semaphores[VULKAN_MAX_FRAMES_IN_FLIGHTS]; // The semaphores used to indicate image availability, one per frame
         VkSemaphore queue_complete_semaphores[VULKAN_MAX_FRAMES_IN_FLIGHTS]; // The semaphores used to indicate queue availability, one per frame
         VkFence images_in_flight[VULKAN_MAX_FRAMES_IN_FLIGHTS]; // Holds pointers to fences which exist and are owned elsewhere, one per frame
 
-        const u32 in_flight_fence_count = VULKAN_MAX_FRAMES_IN_FLIGHTS - 1; // The current number of in-flight fences
+        const unsigned int in_flight_fence_count = VULKAN_MAX_FRAMES_IN_FLIGHTS - 1; // The current number of in-flight fences
         VkFence in_flight_fences[VULKAN_MAX_FRAMES_IN_FLIGHTS - 1]; // The in-flight fences, used to indicate to the application when a frame is busy/ready
 
-        unsigned int image_index;   // The current image index
-        u32 current_frame; // The current frame
+        u32 current_frame = 0; // The current frame
 
-        bool recreating_swapchain; // Indicates if the swapchain is currently being recreated
-        bool render_flag_changed;
+        bool recreating_swapchain = false; // Indicates if the swapchain is currently being recreated
+        bool render_flag_changed = false;
     }
-*/
+
 //    renderbuffer object_vertex_buffer; // The object vertex buffer, used to hold geometry vertices
 //    renderbuffer object_index_buffer;  // The object index buffer, used to hold geometry indices
 //    vulkan_geometry_data geometries[VULKAN_MAX_GEOMETRY_COUNT]; // A collection of loaded geometries
@@ -197,6 +276,15 @@ namespace gpu {
         }
 
         return true;
+    }
+
+    namespace _debug {
+        bool init();
+        void shutdown();
+        bool setObjectName(VkObjectType object_type, void* object_handle, const char* object_name);
+        bool setObjectTag(VkObjectType object_type, void* object_handle, u64 tag_size, const void* tag_data);
+        bool beginLabel(VkCommandBuffer buffer, const char* label_name, Color color);
+        bool endLabel(VkCommandBuffer buffer);
     }
 }
 

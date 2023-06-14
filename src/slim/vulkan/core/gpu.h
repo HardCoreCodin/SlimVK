@@ -3,7 +3,7 @@
 #include "./debug.h"
 #include "./instance.h"
 #include "./device.h"
-//#include "./swapchain.h"
+#include "./swapchain.h"
 
 namespace gpu {
     bool init(const char* app_name = "SlimVK") {
@@ -18,7 +18,7 @@ namespace gpu {
         }
 
         SLIM_LOG_DEBUG("Creating Vulkan surface...");
-        if (CreateVulkanSurface(instance, surface) != VK_SUCCESS) {
+        if (CreateVulkanSurface(instance, _device::surface) != VK_SUCCESS) {
             SLIM_LOG_FATAL("Failed to create Vulkan platform surface!");
             return false;
         }
@@ -29,10 +29,7 @@ namespace gpu {
             return false;
         }
 
-//        if (!_swapchain::init()) {
-//            SLIM_LOG_FATAL("Failed to initialize device!");
-//            return false;
-//        }
+        _swapchain::create(framebuffer_width, framebuffer_height, _swapchain::SwapchainConfig_VSync);
 
         // Create buffers
 
@@ -102,16 +99,19 @@ namespace gpu {
         graphics_command_buffers = 0;
 
         // Swapchain
+
 //        vulkan_swapchain_destroy(context, &context->swapchain);
 
 */
+        _swapchain::destroy();
+
         SLIM_LOG_DEBUG("Destroying Vulkan device...");
         _device::destroy();
 
         SLIM_LOG_DEBUG("Destroying Vulkan surface...");
-        if (surface) {
-            vkDestroySurfaceKHR(instance, surface, nullptr);
-            surface = 0;
+        if (_device::surface) {
+            vkDestroySurfaceKHR(instance, _device::surface, nullptr);
+            _device::surface = 0;
         }
 
         _debug::shutdown();

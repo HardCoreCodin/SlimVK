@@ -36,7 +36,7 @@ namespace gpu {
             // #if 'ON_APPLE'
             //create_info.flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
 
-            VkResult instance_result = vkCreateInstance(&create_info, 0, &instance);
+            VkResult instance_result = vkCreateInstance(&create_info, nullptr, &instance);
             if (!isVulkanResultSuccess(instance_result)) {
                 const char* result_string = getVulkanResultString(instance_result, true);
                 SLIM_LOG_FATAL("Vulkan instance creation failed with result: '%s'", result_string);
