@@ -4,6 +4,7 @@
 #include "./instance.h"
 #include "./device.h"
 #include "./swapchain.h"
+#include "./render_pass.h"
 
 namespace gpu {
     bool init(const char* app_name = "SlimVK") {
@@ -30,6 +31,40 @@ namespace gpu {
         }
 
         _swapchain::create(framebuffer_width, framebuffer_height, _swapchain::SwapchainConfig_VSync);
+
+        main_render_pass.create({
+            "main_render_pass",
+            RectI{
+                0, (i32)framebuffer_width,
+                0, (i32)framebuffer_height
+            },
+            Color{
+                0.0f,
+                0.0f,
+                0.2f
+            },
+            1.0f,
+            0,
+            (
+                (const u8)RenderPass::ClearFlags::Color |
+                (const u8)RenderPass::ClearFlags::Depth
+            ),
+            2,
+            {
+                {
+                    RenderTarget::Attachment::Type::Color,
+                    RenderTarget::Attachment::Source::Default,
+                    RenderTarget::Attachment::LoadOp::DontCare,
+                    RenderTarget::Attachment::StoreOp::Store
+                },
+                {
+                    RenderTarget::Attachment::Type::Depth,
+                    RenderTarget::Attachment::Source::Default,
+                    RenderTarget::Attachment::LoadOp::DontCare,
+                    RenderTarget::Attachment::StoreOp::DontCare
+                }
+            }
+        });
 
         // Create buffers
 
@@ -103,6 +138,8 @@ namespace gpu {
 //        vulkan_swapchain_destroy(context, &context->swapchain);
 
 */
+        main_render_pass.destroy();
+
         _swapchain::destroy();
 
         SLIM_LOG_DEBUG("Destroying Vulkan device...");

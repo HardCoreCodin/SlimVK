@@ -15,7 +15,7 @@
     #define VK_CHECK(expr) expr
     #define VK_SET_DEBUG_OBJECT_NAME(object_type, object_handle, object_name)
     #define VK_SET_DEBUG_OBJECT_TAG(object_type, object_handle, tag_size, tag_data)
-    #define VK_BEGIN_DEBUG_LABEL(command_buffer, label_name, colour)
+    #define VK_BEGIN_DEBUG_LABEL(command_buffer, label_name, color)
     #define VK_END_DEBUG_LABEL(command_buffer)
     #define VK_DEBUG_EXTENSIONS
     #define VK_VALIDATION_LAYERS
@@ -23,7 +23,7 @@
     #define VK_CHECK(expr) SLIM_ASSERT_DEBUG((expr) == VK_SUCCESS)
     #define VK_SET_DEBUG_OBJECT_NAME(object_type, object_handle, object_name) _debug::setObjectName(object_type, object_handle, object_name)
     #define VK_SET_DEBUG_OBJECT_TAG(object_type, object_handle, tag_size, tag_data) _debug::setObjectTag(object_type, object_handle, tag_size, tag_data)
-    #define VK_BEGIN_DEBUG_LABEL(command_buffer, label_name, colour) _debug::beginLabel(command_buffer, label_name, colour)
+    #define VK_BEGIN_DEBUG_LABEL(command_buffer, label_name, color) _debug::beginLabel(command_buffer, label_name, color)
     #define VK_END_DEBUG_LABEL(command_buffer) _debug::endLabel(command_buffer)
     #define VK_DEBUG_EXTENSIONS VK_EXT_DEBUG_UTILS_EXTENSION_NAME
     #define VK_VALIDATION_LAYERS "VK_LAYER_KHRONOS_validation"
@@ -174,7 +174,104 @@ namespace gpu {
         );
     }
 
-    struct CommandBuffer;
+    enum class State {
+        Ready,
+        Recording,
+        InRenderPass,
+        Recorded,
+        Submitted,
+        UnAllocated
+    };
+
+    struct CommandBuffer {
+        VkCommandBuffer handle;
+        State state;
+    };
+
+    CommandBuffer graphics_command_buffers[4];
+
+    struct FrameBuffer {
+        VkFramebuffer handle;
+    };
+
+    struct RenderTarget {
+        struct Attachment {
+            enum class Type {
+                Color = 1,
+                Depth = 2,
+                Stencil = 4
+            };
+
+            enum class Source {
+                Default = 1,
+                View = 2
+            };
+
+            enum class LoadOp {
+                DontCare,
+                Load
+            };
+
+            enum StoreOp {
+                DontCare,
+                Store
+            };
+
+            struct Config {
+                Type type;
+                Source source;
+                LoadOp load_operation;
+                StoreOp store_operation;
+                bool present_after;
+            };
+
+            Config config;
+            struct texture* texture;
+        };
+
+        struct Config {
+            u8 attachment_count;
+            Attachment::Config attachments[4];
+        };
+
+        u8 attachment_count;
+        Attachment *attachments;
+        FrameBuffer *framebuffer;
+    };
+
+    struct RenderPass {
+        enum class ClearFlags {
+            None = 0,
+            Color = 1,
+            Depth = 2,
+            Stencil = 4
+        };
+
+        struct Config {
+            const char* name;
+            RectI render_area;
+            Color clear_color;
+            f32 depth;
+            u32 stencil;
+            u8 clear_flags;
+            RenderTarget::Config target;
+        };
+
+        VkRenderPass handle;
+        Config config;
+        State state;
+        u16 id;
+        u8 render_target_count;
+        RenderTarget* render_targets;
+
+        bool create(const Config &config);
+        void destroy();
+
+        bool begin(RenderTarget &render_target);
+        bool end();
+    };
+
+    RenderPass main_render_pass;
 
     struct Image {
         VkImage handle;
