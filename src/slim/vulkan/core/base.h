@@ -194,67 +194,46 @@ namespace gpu {
         VkFramebuffer handle;
     };
 
-    struct RenderTarget {
-        struct Attachment {
-            enum class Type {
-                Color = 1,
-                Depth = 2,
-                Stencil = 4
-            };
-
-            enum class Source {
-                Default = 1,
-                View = 2
-            };
-
-            enum class LoadOp {
-                DontCare,
-                Load
-            };
-
-            enum StoreOp {
-                DontCare,
-                Store
-            };
-
-            struct Config {
-                Type type;
-                Source source;
-                LoadOp load_operation;
-                StoreOp store_operation;
-                bool present_after;
-            };
-
-            Config config;
-            struct texture* texture;
-        };
-
-        struct Config {
-            u8 attachment_count;
-            Attachment::Config attachments[4];
-        };
-
-        u8 attachment_count;
-        Attachment *attachments;
-        FrameBuffer *framebuffer;
-    };
-
-    struct RenderPass {
-        enum class ClearFlags {
-            None = 0,
+    struct Attachment {
+        enum class Type : u8 {
             Color = 1,
             Depth = 2,
             Stencil = 4
         };
 
+        enum class Flag : u8 {
+            Clear = 1,
+            Load = 2,
+            Store = 4,
+            Present = 8,
+            SourceIsView = 16
+        };
+
+        struct Config {
+            Type type;
+            u8 flags;
+        };
+
+        Config config;
+        struct texture* texture;
+    };
+
+    struct RenderTarget {
+        Attachment::Config attachment_configs[4];
+        Attachment *attachments;
+        FrameBuffer *framebuffer;
+        u8 attachment_count;
+    };
+
+    struct RenderPass {
         struct Config {
             const char* name;
             RectI render_area;
             Color clear_color;
             f32 depth;
             u32 stencil;
-            u8 clear_flags;
-            RenderTarget::Config target;
+            u8 attachment_count;
+            Attachment::Config attachment_configs[4];
         };
 
         VkRenderPass handle;
@@ -267,7 +246,7 @@ namespace gpu {
         bool create(const Config &config);
         void destroy();
 
-        bool begin(RenderTarget &render_target);
+        bool begin(RenderTarget &render_target) const;
         bool end();
     };
 

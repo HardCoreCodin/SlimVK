@@ -34,35 +34,12 @@ namespace gpu {
 
         main_render_pass.create({
             "main_render_pass",
-            RectI{
-                0, (i32)framebuffer_width,
-                0, (i32)framebuffer_height
-            },
-            Color{
-                0.0f,
-                0.0f,
-                0.2f
-            },
-            1.0f,
-            0,
-            (
-                (const u8)RenderPass::ClearFlags::Color |
-                (const u8)RenderPass::ClearFlags::Depth
-            ),
-            2,
-            {
-                {
-                    RenderTarget::Attachment::Type::Color,
-                    RenderTarget::Attachment::Source::Default,
-                    RenderTarget::Attachment::LoadOp::DontCare,
-                    RenderTarget::Attachment::StoreOp::Store
-                },
-                {
-                    RenderTarget::Attachment::Type::Depth,
-                    RenderTarget::Attachment::Source::Default,
-                    RenderTarget::Attachment::LoadOp::DontCare,
-                    RenderTarget::Attachment::StoreOp::DontCare
-                }
+            RectI{0, (i32)framebuffer_width,
+                             0, (i32)framebuffer_height},
+            Color{ 0.0f, 0.0f, 0.2f }, 1.0f, 0,
+            2, {
+                {Attachment::Type::Color, (u8)Attachment::Flag::Store},
+                { Attachment::Type::Depth }
             }
         });
 
