@@ -40,7 +40,7 @@ bool gpu::RenderPass::create(const Config &new_config) {
         attachment_desc.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
 
         if (color) {
-            attachment_desc.format = view ? VK_FORMAT_R8G8B8A8_UNORM : _swapchain::image_format.format;
+            attachment_desc.format = view ? VK_FORMAT_R8G8B8A8_UNORM : present::image_format.format;
 
             // If loading, that means coming from another pass, meaning the format should be
             // VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL. Otherwise it is undefined.
@@ -52,7 +52,7 @@ bool gpu::RenderPass::create(const Config &new_config) {
             // Push to colour attachments array.
             color_attachment_descriptions[color_attachment_count++] = attachment_desc;
         } else if (attachment_config.type == Attachment::Type::Depth) {
-            attachment_desc.format = _device::depth_format;
+            attachment_desc.format = present::depth_format;
 
             // If coming from a previous pass, should already be VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL. Otherwise undefined.
             attachment_desc.initialLayout = load ? VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL : VK_IMAGE_LAYOUT_UNDEFINED;
@@ -71,20 +71,19 @@ bool gpu::RenderPass::create(const Config &new_config) {
     u32 attachments_added = 0;
 
     // Colour attachment reference.
-
-    VkAttachmentReference colour_attachment_references[16];
+    VkAttachmentReference color_attachment_references[16];
     if (color_attachment_count > 0) {
         for (u32 i = 0; i < color_attachment_count; ++i) {
-            colour_attachment_references[i].attachment = attachments_added;  // Attachment description array index
-            colour_attachment_references[i].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+            color_attachment_references[i].attachment = attachments_added;  // Attachment description array index
+            color_attachment_references[i].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
             attachments_added++;
         }
 
         sub_pass.colorAttachmentCount = color_attachment_count;
-        sub_pass.pColorAttachments = colour_attachment_references;
+        sub_pass.pColorAttachments = color_attachment_references;
     } else {
         sub_pass.colorAttachmentCount = 0;
-        sub_pass.pColorAttachments = 0;
+        sub_pass.pColorAttachments = nullptr;
     }
 
     // Depth attachment reference.
@@ -150,64 +149,4 @@ bool gpu::RenderPass::create(const Config &new_config) {
 void gpu::RenderPass::destroy() {
     vkDestroyRenderPass(device, handle, nullptr);
     handle = nullptr;
-}
-
-bool gpu::RenderPass::begin(RenderTarget &render_target) const {
-    // Cold-cast the context
-
-    CommandBuffer &command_buffer = graphics_command_buffers[_swapchain::image_index];
-
-    // Begin the render pass.
-    VkRenderPassBeginInfo begin_info = {VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
-    begin_info.renderPass = handle;
-    begin_info.framebuffer = render_target.framebuffer->handle;
-    begin_info.renderArea.offset.x = config.render_area.left;
-    begin_info.renderArea.offset.y = config.render_area.top;
-    begin_info.renderArea.extent.width = config.render_area.right - config.render_area.left;
-    begin_info.renderArea.extent.height = config.render_area.bottom - config.render_area.top;
-    begin_info.clearValueCount = 0;
-    VkClearValue clear_values[2] = {{}, {}};
-
-    for (u32 i = 0; i < config.attachment_count; ++i)
-        if (config.attachment_configs[i].flags & (u8)Attachment::Flag::Clear) {
-            begin_info.clearValueCount = config.attachment_count;
-
-            switch (config.attachment_configs[i].type) {
-                case Attachment::Type::Color: {
-                    clear_values[i].color.float32[0] = config.clear_color.r;
-                    clear_values[i].color.float32[1] = config.clear_color.g;
-                    clear_values[i].color.float32[2] = config.clear_color.b;
-                    clear_values[i].color.float32[3] = 1.0f;
-                } break;
-                case Attachment::Type::Depth: {
-                    clear_values[i].depthStencil.depth = config.depth;
-                    clear_values[i].depthStencil.stencil = 0;
-                } break;
-                case Attachment::Type::Stencil: {
-                    clear_values[i].depthStencil.depth = config.depth;
-                    clear_values[i].depthStencil.stencil = config.stencil;
-                }
-            }
-        }
-
-    begin_info.pClearValues = begin_info.clearValueCount > 0 ? clear_values : nullptr;
-
-    vkCmdBeginRenderPass(command_buffer.handle, &begin_info, VK_SUBPASS_CONTENTS_INLINE);
-    command_buffer.state = State::InRenderPass;
-
-    Color color{0.0f, 0.5f, 0.3f};
-    VK_BEGIN_DEBUG_LABEL(command_buffer.handle, config.name, color);
-
-    return true;
-}
-
-bool gpu::RenderPass::end() {
-    CommandBuffer &command_buffer = graphics_command_buffers[_swapchain::image_index];
-    // End the render pass.
-    vkCmdEndRenderPass(command_buffer.handle);
-    VK_END_DEBUG_LABEL(command_buffer.handle);
-
-    command_buffer.state = State::Recording;
-
-    return true;
 }

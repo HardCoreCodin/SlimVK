@@ -29,7 +29,7 @@
     #define VK_VALIDATION_LAYERS "VK_LAYER_KHRONOS_validation"
 #endif
 
-#define VULKAN_MAX_FRAMES_IN_FLIGHTS 3
+#define VULKAN_MAX_SWAPCHAIN_FRAME_COUNT 3
 #define VULKAN_MAX_PRESENTATION_MODES 8
 #define VULKAN_MAX_SURFACE_FORMATS 512
 #define VULKAN_MAX_MATERIAL_COUNT 1024
@@ -81,38 +81,348 @@
 //    MEMORY_TAG_MAX_TAGS
 //}
 
-enum TextureType {
-    TextureType_2D, // @brief A standard two-dimensional texture
-    TextureType_CubeMap // A cube texture, used for cubemaps
-};
 
 namespace gpu {
     VkInstance instance;
     VkPhysicalDevice physical_device;
     VkDevice device;
-    VkSwapchainKHR swapchain;
 
-    VkQueue graphics_queue;
-    VkQueue compute_queue;
-    VkQueue present_queue;
-    VkQueue transfer_queue;
+    enum class State {
+        Ready,
+        Recording,
+        InRenderPass,
+        Recorded,
+        Submitted,
+        UnAllocated
+    };
 
-    u32 graphics_queue_family_index = -1;
-    u32 compute_queue_family_index = -1;
-    u32 present_queue_family_index = -1;
-    u32 transfer_queue_family_index = -1;
+    struct Image {
+        VkImage handle;
+        VkDeviceMemory memory;
+        VkImageView view;
+        VkMemoryRequirements memory_requirements;
+        VkMemoryPropertyFlags memory_flags;
+        u32 width;
+        u32 height;
+        char* name;
+        VkImageViewType type;
 
-    VkCommandPool graphics_command_pool;
-//        vulkan_command_buffer* graphics_command_buffers; // The graphics command buffers, one per frame
+        void create(VkImageViewType type, u32 width, u32 height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags memory_flags, bool create_view, VkImageAspectFlags view_aspect_flags, const char* name);
+        void createView(VkImageViewType type, VkFormat format, VkImageAspectFlags aspect_flags);
+        void destroy();
+    };
 
+    struct Attachment {
+        enum class Type : u8 {
+            Color = 1,
+            Depth = 2,
+            Stencil = 4
+        };
 
-    u32 framebuffer_width = 800;
-    u32 framebuffer_height = 600;
-    u64 framebuffer_size_generation; // Current generation of framebuffer size. If it does not match framebuffer_size_last_generation, a new one should be generated
-    u64 framebuffer_size_last_generation; // The generation of the framebuffer when it was last created. Set to framebuffer_size_generation when updated
+        enum class Flag : u8 {
+            Clear = 1,
+            Load = 2,
+            Store = 4,
+            Present = 8,
+            SourceIsView = 16
+        };
 
-    Rect viewport_rect;
-    Rect scissor_rect;
+        struct Config {
+            Type type;
+            u8 flags;
+        };
+
+        Config config;
+        struct texture* texture;
+    };
+
+    struct FrameBuffer {
+        VkFramebuffer handle;
+
+        void create(u32 width, u32 height, VkRenderPass render_pass_handle, VkImageView *image_views, unsigned int image_views_count) {
+            VkFramebufferCreateInfo framebuffer_create_info = {VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO};
+            framebuffer_create_info.renderPass = render_pass_handle;
+            framebuffer_create_info.attachmentCount = image_views_count;
+            framebuffer_create_info.pAttachments = image_views;
+            framebuffer_create_info.width = width;
+            framebuffer_create_info.height = height;
+            framebuffer_create_info.layers = 1;
+
+            VK_CHECK(vkCreateFramebuffer(device, &framebuffer_create_info, nullptr, &handle))
+        }
+
+        void destroy() {
+            if (handle == nullptr) return;
+            vkDestroyFramebuffer(device, handle, nullptr);
+            handle = nullptr;
+        }
+    };
+
+    struct RenderTarget {
+        Attachment::Config attachment_configs[4];
+        Attachment *attachments;
+        FrameBuffer *framebuffer;
+        u8 attachment_count;
+    };
+
+    struct RenderPass {
+        struct Config {
+            const char* name;
+            VkRect2D rect;
+            Color clear_color;
+            f32 depth;
+            u32 stencil;
+            u8 attachment_count;
+            Attachment::Config attachment_configs[4];
+        };
+
+        VkRenderPass handle;
+        Config config;
+        State state;
+        u16 id;
+//        u8 render_target_count;
+//        RenderTarget* render_targets;
+
+        bool create(const Config &config);
+        void destroy();
+    };
+
+    RenderPass main_render_pass;
+
+//    renderbuffer object_vertex_buffer; // The object vertex buffer, used to hold geometry vertices
+//    renderbuffer object_index_buffer;  // The object index buffer, used to hold geometry indices
+//    vulkan_geometry_data geometries[VULKAN_MAX_GEOMETRY_COUNT]; // A collection of loaded geometries
+
+    struct Fence {
+        VkFence handle = nullptr;
+        bool is_signaled = true;
+
+        void create() {
+            destroy();
+
+            // Create the fence in a signaled state, indicating that the first frame has already been "rendered".
+            // This will prevent the application from waiting indefinitely for the first frame to render since it
+            // cannot be rendered until a frame is "rendered" before it.
+            VkFenceCreateInfo fence_create_info = {VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+            fence_create_info.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+            VK_CHECK(vkCreateFence(device, &fence_create_info, nullptr, &handle))
+        }
+
+        void destroy() {
+            if (handle) vkDestroyFence(device, handle, nullptr);
+            handle = nullptr;
+        }
+    };
+
+    struct CommandBuffer {
+        VkCommandBuffer handle;
+
+    protected:
+        const VkCommandPool pool;
+        const VkQueue queue;
+        const unsigned int queue_family_index;
+
+    public:
+        State state = State::Ready;
+
+        explicit CommandBuffer(VkCommandBuffer buffer = nullptr, VkCommandPool pool = nullptr, VkQueue queue = nullptr, unsigned int queue_family_index = 0) :
+            handle{buffer}, pool{pool}, queue{queue}, queue_family_index{queue_family_index} {}
+
+        void begin(bool is_single_use, bool is_renderpass_continue, bool is_simultaneous_use);
+        void end();
+
+        void beginSingleUse();
+        void endSingleUse();
+
+        void reset();
+        void free();
+
+        void transitionImageLayout(Image &image, VkFormat format, VkImageLayout old_layout, VkImageLayout new_layout);
+
+        void setViewport(const VkRect2D &rect);
+        void setScissor(VkRect2D rect);
+    };
+
+    template <typename CommandBufferType>
+    struct CommandPool {
+        VkCommandPool handle;
+
+        void free(CommandBufferType &command_buffer) {
+            vkFreeCommandBuffers(device, handle,1, &command_buffer.handle);
+            command_buffer.handle = 0;
+            command_buffer.state = State::UnAllocated;
+        }
+
+        void destroy() {
+            vkDestroyCommandPool(device, handle, nullptr);
+        }
+
+        void allocate(CommandBufferType &command_buffer, bool is_primary) {
+            if (command_buffer.handle) command_buffer.free();
+
+            VkCommandBufferAllocateInfo allocate_info = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
+            allocate_info.commandPool = handle;
+            allocate_info.level = is_primary ? VK_COMMAND_BUFFER_LEVEL_PRIMARY : VK_COMMAND_BUFFER_LEVEL_SECONDARY;
+            allocate_info.commandBufferCount = 1;
+
+            VkCommandBuffer command_buffer_handle;
+            VK_CHECK(vkAllocateCommandBuffers(device, &allocate_info, &command_buffer_handle))
+            new(&command_buffer)CommandBufferType(command_buffer_handle, handle);
+            command_buffer.reset();
+        }
+
+    protected:
+        void _create(unsigned int queue_family_index) {
+            // Create command pool for graphics queue.
+            VkCommandPoolCreateInfo pool_create_info = {VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};
+            pool_create_info.queueFamilyIndex = queue_family_index;
+            pool_create_info.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+            VK_CHECK(vkCreateCommandPool(device, &pool_create_info, nullptr, &handle))
+        }
+    };
+
+    namespace graphics {
+        VkQueue queue;
+        unsigned int queue_family_index;
+
+        struct GraphicsCommandBuffer : CommandBuffer {
+            GraphicsCommandBuffer(VkCommandBuffer command_buffer_handle = nullptr, VkCommandPool command_pool = nullptr) :
+                CommandBuffer(command_buffer_handle, command_pool, graphics::queue, graphics::queue_family_index) {}
+
+            bool beginRenderPass(RenderPass &renderpass, VkFramebuffer framebuffer); //, RenderTarget &render_target);
+            bool endRenderPass();
+        };
+
+        struct GraphicsCommandPool : CommandPool<GraphicsCommandBuffer> {
+            void create() {
+                _create(queue_family_index);
+                SLIM_LOG_INFO("Graphics command pool created.")
+            }
+        };
+
+        GraphicsCommandBuffer *command_buffer = nullptr;
+
+        GraphicsCommandPool command_pool;
+    }
+
+    namespace transfer {
+        VkQueue queue;
+        unsigned int queue_family_index;
+
+        struct TransferCommandBuffer : CommandBuffer {
+            TransferCommandBuffer(VkCommandBuffer command_buffer_handle = nullptr, VkCommandPool command_pool = nullptr) :
+                CommandBuffer(command_buffer_handle, command_pool, transfer::queue, transfer::queue_family_index) {}
+
+            void copyBufferToImage(VkBuffer buffer, Image &image);
+            void copyImageToBuffer(Image &image, VkBuffer buffer);
+            void copyPixelToBuffer(Image &image,  u32 x, u32 y, VkBuffer buffer);
+        };
+
+        struct TransferCommandPool : CommandPool<TransferCommandBuffer> {
+            void create() {
+                _create(queue_family_index);
+                SLIM_LOG_INFO("Transfer command pool created.")
+            }
+        };
+
+        TransferCommandPool command_pool;
+    }
+
+    namespace compute {
+        VkQueue queue;
+        unsigned int queue_family_index;
+
+        struct ComputeCommandBuffer : CommandBuffer {
+            ComputeCommandBuffer(VkCommandBuffer command_buffer_handle = nullptr, VkCommandPool command_pool = nullptr) :
+                CommandBuffer(command_buffer_handle, command_pool, compute::queue, compute::queue_family_index) {}
+        };
+
+        struct ComputeCommandPool : CommandPool<ComputeCommandBuffer> {
+            void create() {
+                _create(queue_family_index);
+                SLIM_LOG_INFO("Compute command pool created.")
+            }
+        };
+
+        ComputeCommandPool command_pool;
+    }
+
+    namespace present {
+        VkSwapchainKHR swapchain;
+        VkQueue queue;
+        unsigned int queue_family_index;
+
+        struct PresentCommandBuffer : CommandBuffer {
+            PresentCommandBuffer(VkCommandBuffer command_buffer_handle = nullptr, VkCommandPool command_pool = nullptr) :
+                CommandBuffer(command_buffer_handle, command_pool, present::queue, present::queue_family_index) {}
+        };
+
+        struct PresentCommandPool : CommandPool<PresentCommandBuffer> {
+            void create() {
+                _create(queue_family_index);
+                SLIM_LOG_INFO("Present command pool created.")
+            }
+        };
+
+        PresentCommandPool command_pool;
+
+        bool vsync = true;
+        bool power_saving = false;
+        u32 framebuffer_width = DEFAULT_WIDTH;
+        u32 framebuffer_height = DEFAULT_HEIGHT;
+        u64 framebuffer_size_generation = 0; // Current generation of framebuffer size. If it does not match framebuffer_size_last_generation, a new one should be generated
+        u64 framebuffer_size_last_generation = 0; // The generation of the framebuffer when it was last created. Set to framebuffer_size_generation when updated
+
+        VkRect2D viewport_rect;
+        VkRect2D scissor_rect;
+
+        u8 depth_channel_count; // The chosen depth format's number of channels
+        VkFormat depth_format; // The chosen supported depth format
+        VkSurfaceFormatKHR image_format;
+        VkPresentModeKHR present_mode;
+
+        // The maximum number of "images in flight" (images simultaneously being rendered to).
+        // Typically one less than the total number of images available.
+        u8 max_frames_in_flight = VULKAN_MAX_SWAPCHAIN_FRAME_COUNT - 1;
+        VkFence in_flight_fences[VULKAN_MAX_SWAPCHAIN_FRAME_COUNT - 1];
+        VkFence images_in_flight[VULKAN_MAX_SWAPCHAIN_FRAME_COUNT];
+
+        VkSemaphore image_available_semaphores[VULKAN_MAX_SWAPCHAIN_FRAME_COUNT - 1];
+        VkSemaphore queue_complete_semaphores[VULKAN_MAX_SWAPCHAIN_FRAME_COUNT - 1];
+
+        unsigned int image_count = 0; // The number of swapchain images
+
+//        texture* render_textures; // An array of render targets, which contain swapchain images
+//        texture* depth_textures; // An array of depth textures, one per frame
+
+        //Render targets used for on-screen rendering, one per frame. The images contained in these are created and owned by the swapchain
+//        render_target render_targets[3];
+//        render_target world_render_targets[VULKAN_MAX_FRAMES_IN_FLIGHTS]; // Render targets used for world rendering. One per frame
+
+//        const unsigned int in_flight_fence_count = VULKAN_MAX_FRAMES_IN_FLIGHTS - 1; // The current number of in-flight fences
+//        VkFence in_flight_fences[VULKAN_MAX_FRAMES_IN_FLIGHTS - 1]; // The in-flight fences, used to indicate to the application when a frame is busy/ready
+
+        u32 current_frame = 0; // The current frame
+        bool recreating_swapchain = false; // Indicates if the swapchain is currently being recreated
+        bool render_flag_changed = false;
+
+        unsigned int current_image_index = 0;   // The current image index
+
+        struct SwapchainFrame {
+            Image image{};
+            Image depth_image{};
+            FrameBuffer framebuffer{};
+
+            void regenerateFrameBuffer(u32 width, u32 height);
+            void create(u32 width, u32 height, VkImage image_handle, u32 index);
+            void destroy();
+        };
+
+        SwapchainFrame swapchain_frames[VULKAN_MAX_SWAPCHAIN_FRAME_COUNT];
+        graphics::GraphicsCommandBuffer graphics_command_buffers[VULKAN_MAX_SWAPCHAIN_FRAME_COUNT];
+
+        FrameBuffer *framebuffer = nullptr;
+    }
 
     namespace _instance {
         VkExtensionProperties available_extensions[256];
@@ -145,12 +455,12 @@ namespace gpu {
             bool sampler_anisotropy = false;
         }
 
+        bool present_shares_graphics_queue;
+        bool transfer_shares_graphics_queue;
+
         VkPhysicalDeviceProperties properties;
         VkPhysicalDeviceMemoryProperties memory_properties;
         VkPhysicalDeviceFeatures features;
-
-        VkFormat depth_format; // The chosen supported depth format
-        u8 depth_channel_count; // The chosen depth format's number of channels
 
         VkSurfaceKHR surface;
         VkSurfaceCapabilitiesKHR surface_capabilities;
@@ -173,149 +483,6 @@ namespace gpu {
             u32 property_flags // Memory properties that need to exist
         );
     }
-
-    enum class State {
-        Ready,
-        Recording,
-        InRenderPass,
-        Recorded,
-        Submitted,
-        UnAllocated
-    };
-
-    struct CommandBuffer {
-        VkCommandBuffer handle;
-        State state;
-    };
-
-    CommandBuffer graphics_command_buffers[4];
-
-    struct FrameBuffer {
-        VkFramebuffer handle;
-    };
-
-    struct Attachment {
-        enum class Type : u8 {
-            Color = 1,
-            Depth = 2,
-            Stencil = 4
-        };
-
-        enum class Flag : u8 {
-            Clear = 1,
-            Load = 2,
-            Store = 4,
-            Present = 8,
-            SourceIsView = 16
-        };
-
-        struct Config {
-            Type type;
-            u8 flags;
-        };
-
-        Config config;
-        struct texture* texture;
-    };
-
-    struct RenderTarget {
-        Attachment::Config attachment_configs[4];
-        Attachment *attachments;
-        FrameBuffer *framebuffer;
-        u8 attachment_count;
-    };
-
-    struct RenderPass {
-        struct Config {
-            const char* name;
-            RectI render_area;
-            Color clear_color;
-            f32 depth;
-            u32 stencil;
-            u8 attachment_count;
-            Attachment::Config attachment_configs[4];
-        };
-
-        VkRenderPass handle;
-        Config config;
-        State state;
-        u16 id;
-        u8 render_target_count;
-        RenderTarget* render_targets;
-
-        bool create(const Config &config);
-        void destroy();
-
-        bool begin(RenderTarget &render_target) const;
-        bool end();
-    };
-
-    RenderPass main_render_pass;
-
-    struct Image {
-        VkImage handle;
-        VkDeviceMemory memory;
-        VkImageView view;
-        VkMemoryRequirements memory_requirements;
-        VkMemoryPropertyFlags memory_flags;
-        u32 width;
-        u32 height;
-        char* name;
-
-        void create(TextureType type, u32 width, u32 height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags memory_flags, bool create_view, VkImageAspectFlags view_aspect_flags, const char* name);
-        void createView(TextureType type, VkFormat format, VkImageAspectFlags aspect_flags);
-//        void transitionLayout(TextureType type, CommandBuffer &command_buffer, VkFormat format, VkImageLayout old_layout, VkImageLayout new_layout);
-//        void copyFromBuffer(TextureType type, VkBuffer buffer, CommandBuffer &command_buffer);
-//        void copyToBuffer(TextureType type, VkBuffer buffer, CommandBuffer &command_buffer);
-//        void copyPixelToBuffer(TextureType type, VkBuffer buffer, u32 x, u32 y, CommandBuffer &command_buffer);
-        void destroy();
-    };
-
-    namespace _swapchain {
-        enum SwapchainConfig {
-            SwapchainConfig_VSync = 0x1,
-            SwapchainConfig_PowerSaving  = 0x2
-        };
-
-        VkSurfaceFormatKHR image_format;
-        VkPresentModeKHR present_mode;
-
-        // The maximum number of "images in flight" (images simultaneously being rendered to).
-        // Typically one less than the total number of images available.
-        u8 max_frames_in_flight = 1;
-
-        SwapchainConfig config; // Indicates various flags used for swapchain instantiation
-        unsigned int image_count = 0; // The number of swapchain images
-        unsigned int image_index = 0;   // The current image index
-
-//        texture* render_textures; // An array of render targets, which contain swapchain images
-//        texture* depth_textures; // An array of depth textures, one per frame
-
-        //Render targets used for on-screen rendering, one per frame. The images contained in these are created and owned by the swapchain
-//        render_target render_targets[3];
-//        render_target world_render_targets[VULKAN_MAX_FRAMES_IN_FLIGHTS]; // Render targets used for world rendering. One per frame
-
-        Image images[VULKAN_MAX_FRAMES_IN_FLIGHTS];
-        Image depth_images[VULKAN_MAX_FRAMES_IN_FLIGHTS];
-//        VkImage images[VULKAN_MAX_FRAMES_IN_FLIGHTS];
-//        VkImageView image_views[VULKAN_MAX_FRAMES_IN_FLIGHTS];
-
-        VkSemaphore image_available_semaphores[VULKAN_MAX_FRAMES_IN_FLIGHTS]; // The semaphores used to indicate image availability, one per frame
-        VkSemaphore queue_complete_semaphores[VULKAN_MAX_FRAMES_IN_FLIGHTS]; // The semaphores used to indicate queue availability, one per frame
-        VkFence images_in_flight[VULKAN_MAX_FRAMES_IN_FLIGHTS]; // Holds pointers to fences which exist and are owned elsewhere, one per frame
-
-        const unsigned int in_flight_fence_count = VULKAN_MAX_FRAMES_IN_FLIGHTS - 1; // The current number of in-flight fences
-        VkFence in_flight_fences[VULKAN_MAX_FRAMES_IN_FLIGHTS - 1]; // The in-flight fences, used to indicate to the application when a frame is busy/ready
-
-        u32 current_frame = 0; // The current frame
-
-        bool recreating_swapchain = false; // Indicates if the swapchain is currently being recreated
-        bool render_flag_changed = false;
-    }
-
-//    renderbuffer object_vertex_buffer; // The object vertex buffer, used to hold geometry vertices
-//    renderbuffer object_index_buffer;  // The object index buffer, used to hold geometry indices
-//    vulkan_geometry_data geometries[VULKAN_MAX_GEOMETRY_COUNT]; // A collection of loaded geometries
 
     bool areStringsEqual(const char *src, const char *trg) {
         bool equal = true;

@@ -55,7 +55,7 @@ struct ExampleApp : SlimApp {
 
     ExampleApp() {
         gpu::init();
-        gpu::shutdown();
+        blit = false;
     }
 
     void OnUpdate(f32 delta_time) override {
@@ -69,16 +69,25 @@ struct ExampleApp : SlimApp {
         if (!controls::is_pressed::alt) viewport.updateNavigation(delta_time);
     }
 
+    void OnShutdown() override {
+        gpu::shutdown();
+    }
+
     void OnRender() override {
-        renderer.render(viewport, true, use_gpu);
+//        renderer.render(viewport, true, use_gpu);
+//
+//        if (controls::is_pressed::alt)
+//            drawSelection(selection, viewport, scene);
+//
+//        if (hud.enabled)
+//            drawHUD(hud, canvas);
+//
+//        canvas.drawToWindow();
 
-        if (controls::is_pressed::alt)
-            drawSelection(selection, viewport, scene);
-
-        if (hud.enabled)
-            drawHUD(hud, canvas);
-
-        canvas.drawToWindow();
+        gpu::beginFrame();
+        gpu::beginRenderPass();
+        gpu::endRenderPass();
+        gpu::endFrame();
     }
 
     void OnKeyChanged(u8 key, bool is_pressed) override {
@@ -127,6 +136,7 @@ struct ExampleApp : SlimApp {
     void OnWindowResize(u16 width, u16 height) override {
         viewport.updateDimensions(width, height);
         canvas.dimensions.update(width, height);
+        gpu::resize(width, height);
     }
     void OnMouseButtonDown(mouse::Button &mouse_button) override {
         mouse::pos_raw_diff_x = mouse::pos_raw_diff_y = 0;

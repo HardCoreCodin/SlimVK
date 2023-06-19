@@ -6,7 +6,9 @@
 struct SlimApp {
     timers::Timer update_timer, render_timer;
     bool is_running{true};
+    bool blit{true};
 
+    virtual void OnShutdown() {};
     virtual void OnWindowResize(u16 width, u16 height) {};
     virtual void OnKeyChanged(  u8 key, bool pressed) {};
     virtual void OnMouseButtonUp(  mouse::Button &mouse_button) {};

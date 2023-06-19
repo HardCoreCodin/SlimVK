@@ -32,6 +32,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
     switch (message) {
         case WM_DESTROY:
             CURRENT_APP->is_running = false;
+            CURRENT_APP->OnShutdown();
             PostQuitMessage(0);
             break;
 
@@ -45,12 +46,14 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
             break;
 
         case WM_PAINT:
-            SetDIBitsToDevice(Win32_window_dc,
-                              0, 0, window::width, window::height,
-                              0, 0, 0, window::height,
-                              (u32*)window::content, &Win32_bitmap_info, DIB_RGB_COLORS);
+            if (CURRENT_APP->blit) {
+                SetDIBitsToDevice(Win32_window_dc,
+                                  0, 0, window::width, window::height,
+                                  0, 0, 0, window::height,
+                                  (u32*)window::content, &Win32_bitmap_info, DIB_RGB_COLORS);
 
-            ValidateRgn(hWnd, nullptr);
+                ValidateRgn(hWnd, nullptr);
+            }
             break;
 
         case WM_SYSKEYDOWN:
@@ -233,11 +236,14 @@ int Win32_EntryPoint(HINSTANCE hInstance, int nCmdShow = SW_SHOW) {
     ShowWindow(Win32_window, nCmdShow);
 
     MSG message;
-    while (CURRENT_APP->is_running) {
+    while (true) {
         while (PeekMessageA(&message, nullptr, 0, 0, PM_REMOVE)) {
             TranslateMessage(&message);
             DispatchMessageA(&message);
         }
+        if (!CURRENT_APP->is_running)
+            break;
+
         CURRENT_APP->OnWindowRedraw();
         mouse::resetChanges();
         InvalidateRgn(Win32_window, nullptr, false);
