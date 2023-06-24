@@ -32,16 +32,28 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
     switch (message) {
         case WM_DESTROY:
             CURRENT_APP->is_running = false;
-            CURRENT_APP->OnShutdown();
+            CURRENT_APP->_shutdown();
             PostQuitMessage(0);
             break;
 
         case WM_SIZE:
-            GetClientRect(hWnd, &Win32_window_rect);
+            if (lParam) {
+                WORD new_window_width = LOWORD(lParam);
+                WORD new_window_height = HIWORD(wParam);
+                if (new_window_width == window::width &&
+                    new_window_height == window::height) {
+                    CURRENT_APP->_restore();
+                } else {
+                    GetClientRect(hWnd, &Win32_window_rect);
+                    Win32_bitmap_info.bmiHeader.biWidth = Win32_window_rect.right - Win32_window_rect.left;
+                    Win32_bitmap_info.bmiHeader.biHeight = Win32_window_rect.top - Win32_window_rect.bottom;
+                    CURRENT_APP->_resize((u16)Win32_bitmap_info.bmiHeader.biWidth, (u16)-Win32_bitmap_info.bmiHeader.biHeight);
+                }
 
-            Win32_bitmap_info.bmiHeader.biWidth = Win32_window_rect.right - Win32_window_rect.left;
-            Win32_bitmap_info.bmiHeader.biHeight = Win32_window_rect.top - Win32_window_rect.bottom;
-            CURRENT_APP->resize((u16)Win32_bitmap_info.bmiHeader.biWidth, (u16)-Win32_bitmap_info.bmiHeader.biHeight);
+                window::width = new_window_width;
+                window::height = new_window_height;
+            } else
+                CURRENT_APP->_minimize();
 
             break;
 
@@ -73,7 +85,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
                 case VK_DOWN   : controls::is_pressed::down   = pressed; break;
                 default: break;
             }
-            CURRENT_APP->OnKeyChanged(key, pressed);
+            CURRENT_APP->_keyChanged(key, pressed);
 
             break;
 
@@ -110,31 +122,31 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
                 case WM_LBUTTONDBLCLK:
                     mouse_button->doubleClick(x, y);
                     mouse::double_clicked = true;
-                    CURRENT_APP->OnMouseButtonDoubleClicked(*mouse_button);
+                    CURRENT_APP->_mouseButtonDoubleClicked(*mouse_button);
                     break;
                 case WM_MBUTTONUP:
                 case WM_RBUTTONUP:
                 case WM_LBUTTONUP:
                     mouse_button->up(x, y);
-                    CURRENT_APP->OnMouseButtonUp(*mouse_button);
+                    CURRENT_APP->_mouseButtonUp(*mouse_button);
                     break;
                 default:
                     mouse_button->down(x, y);
-                    CURRENT_APP->OnMouseButtonDown(*mouse_button);
+                    CURRENT_APP->_mouseButtonDown(*mouse_button);
             }
 
             break;
 
         case WM_MOUSEWHEEL:
             scroll_amount = (f32)(GET_WHEEL_DELTA_WPARAM(wParam)) / (f32)(WHEEL_DELTA);
-            mouse::scroll(scroll_amount); CURRENT_APP->OnMouseWheelScrolled(scroll_amount);
+            mouse::scroll(scroll_amount); CURRENT_APP->_mouseWheelScrolled(scroll_amount);
             break;
 
         case WM_MOUSEMOVE:
             x = GET_X_LPARAM(lParam);
             y = GET_Y_LPARAM(lParam);
-            mouse::move(x, y);        CURRENT_APP->OnMouseMovementSet(x, y);
-            mouse::setPosition(x, y); CURRENT_APP->OnMousePositionSet(x, y);
+            mouse::move(x, y);        CURRENT_APP->_mouseMovementSet(x, y);
+            mouse::setPosition(x, y); CURRENT_APP->_mousePositionSet(x, y);
             break;
 
         case WM_INPUT:
@@ -143,7 +155,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
                     Win32_raw_inputs.data.mouse.lLastY != 0)) {
                 x = Win32_raw_inputs.data.mouse.lLastX;
                 y = Win32_raw_inputs.data.mouse.lLastY;
-                mouse::moveRaw(x, y); CURRENT_APP->OnMouseRawMovementSet(x, y);
+                mouse::moveRaw(x, y); CURRENT_APP->_mouseRawMovementSet(x, y);
             }
 
         default:
@@ -235,6 +247,8 @@ int Win32_EntryPoint(HINSTANCE hInstance, int nCmdShow = SW_SHOW) {
 
     ShowWindow(Win32_window, nCmdShow);
 
+    CURRENT_APP->_init();
+
     MSG message;
     while (true) {
         while (PeekMessageA(&message, nullptr, 0, 0, PM_REMOVE)) {
@@ -244,7 +258,8 @@ int Win32_EntryPoint(HINSTANCE hInstance, int nCmdShow = SW_SHOW) {
         if (!CURRENT_APP->is_running)
             break;
 
-        CURRENT_APP->OnWindowRedraw();
+
+        CURRENT_APP->_redraw();
         mouse::resetChanges();
         InvalidateRgn(Win32_window, nullptr, false);
     }

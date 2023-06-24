@@ -1071,6 +1071,11 @@ namespace os {
     void* openFileForWriting(const char* file_path);
     bool readFromFile(void *out, unsigned long, void *handle);
     bool writeToFile(void *out, unsigned long, void *handle);
+    void print(const char *message, u8 color);
+    void printError(const char *message, u8 color);
+    long long int getFileSizeWithoutOpening(const char* path);
+    long long int getFileSize(void *handle);
+    long long int readEntireFile(const char* file_path, void *out);
 }
 
 namespace timers {

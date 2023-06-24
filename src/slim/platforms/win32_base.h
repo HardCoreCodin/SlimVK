@@ -117,6 +117,79 @@ bool win32_writeToFile(LPVOID out, DWORD size, HANDLE handle) {
     return result != FALSE;
 }
 
+long long int win32_getFileSizeWithoutOpening(const char* file_path) {
+    WIN32_FILE_ATTRIBUTE_DATA fad;
+    if (!GetFileAttributesEx(file_path, GetFileExInfoStandard, &fad)) {
+#ifndef NDEBUG
+        Win32_DisplayError((LPTSTR)"GetFileAttributesEx");
+        printf("Terminal failure: Unable to get the file size attribute.\n GetLastError=%08x\n", (unsigned int)GetLastError());
+#endif
+        return -1;
+    }
+
+    LARGE_INTEGER size;
+    size.HighPart = fad.nFileSizeHigh;
+    size.LowPart = fad.nFileSizeLow;
+    return size.QuadPart;
+}
+
+long long int win32_getFileSize(HANDLE handle) {
+    LARGE_INTEGER size;
+    if (!GetFileSizeEx(handle, &size)) {
+#ifndef NDEBUG
+        Win32_DisplayError((LPTSTR)"GetFileSizeEx");
+        printf("Terminal failure: Unable to get the file size.\n GetLastError=%08x\n", (unsigned int)GetLastError());
+#endif
+        return -1;
+    }
+
+    return size.QuadPart;
+}
+
+void* win32_readEntireFile(const char* file_path, u64 *out_size) {
+    HANDLE handle = CreateFileA(file_path,           // file to open
+                                GENERIC_READ,          // open for reading
+                                FILE_SHARE_READ,       // share for reading
+                                nullptr,                  // default security
+                                OPEN_EXISTING,         // existing file only
+                                FILE_ATTRIBUTE_NORMAL, // normal file
+                                nullptr);                 // no attr. template
+#ifndef NDEBUG
+    if (handle == INVALID_HANDLE_VALUE) {
+        Win32_DisplayError((LPTSTR)"CreateFile");
+        _tprintf((LPTSTR)"Terminal failure: unable to open file \"%s\" for read.\n", file_path);
+        return nullptr;
+    }
+#endif
+
+    LARGE_INTEGER large_size;
+    if (!GetFileSizeEx(handle, &large_size)) {
+#ifndef NDEBUG
+        Win32_DisplayError((LPTSTR)"GetFileSizeEx");
+        printf("Terminal failure: Unable to get the file size.\n GetLastError=%08x\n", (unsigned int)GetLastError());
+#endif
+        return nullptr;
+    }
+
+    *out_size = large_size.QuadPart;
+    void *out = VirtualAlloc(nullptr, (SIZE_T)(*out_size), MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
+
+    DWORD bytes_read = 0;
+    BOOL result = ReadFile(handle, out, (DWORD)large_size.QuadPart, &bytes_read, nullptr);
+#ifndef NDEBUG
+    if (result == FALSE) {
+        Win32_DisplayError((LPTSTR)"ReadFile");
+        printf("Terminal failure: Unable to read from file.\n GetLastError=%08x\n", (unsigned int)GetLastError());
+        CloseHandle(handle);
+        return nullptr;
+    }
+#endif
+
+    CloseHandle(handle);
+
+    return out;
+}
+
 LARGE_INTEGER performance_counter;
 
 void os::setWindowTitle(char* str) {
@@ -147,6 +220,9 @@ void* os::openFileForReading(const char* path) { return win32_openFileForReading
 void* os::openFileForWriting(const char* path) { return win32_openFileForWriting(path); }
 bool os::readFromFile(LPVOID out, DWORD size, HANDLE handle) { return win32_readFromFile(out, size, handle); }
 bool os::writeToFile(LPVOID out, DWORD size, HANDLE handle) { return win32_writeToFile(out, size, handle); }
+long long int os::getFileSizeWithoutOpening(const char* path) { return win32_getFileSizeWithoutOpening(path); }
+long long int os::getFileSize(void *handle) { return win32_getFileSize(handle); }
+void*  os::readEntireFile(const char* file_path, u64 *out_size) { return win32_readEntireFile(file_path, out_size); }
 
 void os::print(const char *message, u8 color) {
     HANDLE console_handle = GetStdHandle(STD_OUTPUT_HANDLE);

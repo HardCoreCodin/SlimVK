@@ -52,3 +52,7 @@ bool gpu::graphics::GraphicsCommandBuffer::endRenderPass() {
 
     return true;
 }
+
+void gpu::graphics::GraphicsCommandBuffer::bindPipeline(const pipeline::Pipeline &pipeline) {
+    vkCmdBindPipeline(handle, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.handle);
+}

@@ -20,7 +20,7 @@ namespace gpu {
             }
 
             VkApplicationInfo app_info = {VK_STRUCTURE_TYPE_APPLICATION_INFO};
-            app_info.apiVersion = VK_API_VERSION_1_2;
+            app_info.apiVersion = VK_MAKE_VERSION( 1, 3, VK_HEADER_VERSION );
             app_info.pApplicationName = app_name;
             app_info.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
             app_info.pEngineName = "SlimEngine";

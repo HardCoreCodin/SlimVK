@@ -6,9 +6,14 @@
 struct SlimApp {
     timers::Timer update_timer, render_timer;
     bool is_running{true};
+    bool is_minimized{true};
     bool blit{true};
+    bool suspend_when_minimized{true};
 
+    virtual void OnInit() {};
     virtual void OnShutdown() {};
+    virtual void OnWindowMinimized() {};
+    virtual void OnWindowRestored() {};
     virtual void OnWindowResize(u16 width, u16 height) {};
     virtual void OnKeyChanged(  u8 key, bool pressed) {};
     virtual void OnMouseButtonUp(  mouse::Button &mouse_button) {};
@@ -30,12 +35,38 @@ struct SlimApp {
         render_timer.endFrame();
     };
 
-    void resize(u16 width, u16 height) {
-        window::width = width;
-        window::height = height;
+    INLINE void _minimize() {
+        is_minimized = true;
+        OnWindowMinimized();
+    }
+
+    INLINE void _restore() {
+        is_minimized = false;
+        OnWindowRestored();
+    }
+
+    INLINE void _resize(u16 width, u16 height) {
         OnWindowResize(width, height);
         OnWindowRedraw();
     }
+
+    INLINE void _redraw() {
+        if (suspend_when_minimized && is_minimized)
+            return;
+
+        OnWindowRedraw();
+    }
+
+    INLINE void _init() { OnInit(); }
+    INLINE void _mouseButtonUp(  mouse::Button &mouse_button) {};
+    INLINE void _mouseButtonDown(mouse::Button &mouse_button) {};
+    INLINE void _mouseButtonDoubleClicked(mouse::Button &mouse_button) {};
+    INLINE void _mouseWheelScrolled(f32 amount) {};
+    INLINE void _mousePositionSet(i32 x, i32 y) {};
+    INLINE void _mouseMovementSet(i32 x, i32 y) {};
+    INLINE void _mouseRawMovementSet(i32 x, i32 y) {};
+    INLINE void _shutdown() { OnShutdown(); }
+    INLINE void _keyChanged(u8 key, bool pressed) { OnKeyChanged(key, pressed); }
 };
 
 SlimApp* createApp();

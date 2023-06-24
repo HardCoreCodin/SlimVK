@@ -9,8 +9,27 @@
 #include "./transfer.h"
 #include "./render_target.h"
 #include "./render_pass.h"
+#include "./shader.h"
+#include "./pipeline.h"
+
 
 namespace gpu {
+    void setViewportAndScissorRect(VkRect2D rect) {
+        present::main_scissor = rect;
+        present::main_viewport.x = (float)rect.offset.x;
+        present::main_viewport.y = (float)rect.offset.y;
+        present::main_viewport.width = (float)rect.extent.width;
+        present::main_viewport.height = (float)rect.extent.height;
+        present::main_viewport.minDepth = 0.0f;
+        present::main_viewport.maxDepth = 1.0f;
+    }
+
+    void setViewportAndScissor(VkRect2D rect) {
+        setViewportAndScissorRect(rect);
+        present::graphics_command_buffers[present::current_image_index].setViewport(&present::main_viewport);
+        present::graphics_command_buffers[present::current_image_index].setScissor(&rect);
+    }
+
     bool init(u32 width = DEFAULT_WIDTH, u32 height = DEFAULT_HEIGHT, const char* app_name = "SlimVK") {
         if (!_instance::init(app_name)) {
             SLIM_LOG_FATAL("Failed to initialize Vulkan instance!");
@@ -47,13 +66,13 @@ namespace gpu {
             "main_render_pass",
             {0, 0, width, height},
             Color{ 0.0f, 0.0f, 0.2f }, 1.0f, 0,
-            2, {
+            1, {
                 {Attachment::Type::Color,  (
                     (u8)Attachment::Flag::Clear |
                     (u8)Attachment::Flag::Store |
                     (u8)Attachment::Flag::Present
                 )},
-                { Attachment::Type::Depth }
+//                { Attachment::Type::Depth }
             }
         });
 
@@ -83,6 +102,15 @@ namespace gpu {
         }
         SLIM_LOG_DEBUG("Vulkan command buffers created.");
 
+        setViewportAndScissorRect({
+                                  0,
+                                  0,
+                                  present::framebuffer_width,
+                                  present::framebuffer_height
+                              });
+
+//        pipeline::main_pipeline.createFromBinaryFiles(vertex_shader_file_path, fragment_shader_file_path);
+        pipeline::main_pipeline.createFromSourceStrings(vertex_shader_source, fragment_shader_source);
 
         // Create buffers
 
@@ -119,6 +147,7 @@ namespace gpu {
 //        renderer_renderbuffer_destroy(&context->object_vertex_buffer);
 //        renderer_renderbuffer_destroy(&context->object_index_buffer);
 
+        pipeline::main_pipeline.destroy();
 
         // Command buffers
         for (u32 i = 0; i < present::image_count; ++i)
@@ -166,17 +195,13 @@ namespace gpu {
         present::recreateSwapchain();
     }
 
-    void setViewport(const VkRect2D &rect) {
-        present::graphics_command_buffers[present::current_image_index].setViewport(rect);
-    }
-
-    void setScissor(const VkRect2D &rect) {
-        present::graphics_command_buffers[present::current_image_index].setScissor(rect);
-    }
-
     void beginRenderPass() {
         if (graphics::command_buffer) graphics::command_buffer->beginRenderPass(main_render_pass, present::framebuffer->handle);
         else SLIM_LOG_WARNING("beginRenderPass: No command buffer")
+
+        graphics::command_buffer->bindPipeline(pipeline::main_pipeline);
+
+        vkCmdDraw(graphics::command_buffer->handle, 3, 1, 0, 0);;
     }
 
     void endRenderPass() {
@@ -243,9 +268,13 @@ namespace gpu {
         graphics::command_buffer->begin(false, false, false);
 
         // Dynamic state
-        VkRect2D rect{0, 0, present::framebuffer_width, present::framebuffer_height};
-        setViewport(rect);
-        setScissor(rect);
+        setViewportAndScissor({
+            0,
+            0,
+            present::framebuffer_width,
+            present::framebuffer_height
+        });
+
 
         return true;
     }

@@ -1,11 +1,12 @@
 cmake_minimum_required(VERSION 3.11)
 
-find_package(Vulkan REQUIRED)
+find_package(Vulkan REQUIRED COMPONENTS shaderc_combined)
 include_directories(PUBLIC ${Vulkan_INCLUDE_DIRS})
-link_libraries(${PROJECT_NAME} Vulkan::Vulkan)
+link_libraries(${PROJECT_NAME} Vulkan::Vulkan Vulkan::shaderc_combined)
 
 project(01_Lights)
 add_executable(01_Lights src/examples/01_Lights.cpp)
+#add_executable(01_Lights src/slim/vulkan/core/shader_compiler.cpp)
 
 #project(02_Geometry)
 #add_executable(02_Geometry WIN32 src/examples/02_Geometry.cpp)

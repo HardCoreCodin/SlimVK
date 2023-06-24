@@ -1389,6 +1389,9 @@ namespace os {
     bool writeToFile(void *out, unsigned long, void *handle);
     void print(const char *message, u8 color);
     void printError(const char *message, u8 color);
+    long long int getFileSizeWithoutOpening(const char* path);
+    long long int getFileSize(void *handle);
+    void* readEntireFile(const char* file_path, u64 *out_size);
 }
 
 namespace timers {

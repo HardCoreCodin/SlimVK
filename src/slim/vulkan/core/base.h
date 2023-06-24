@@ -239,8 +239,8 @@ namespace gpu {
 
         void transitionImageLayout(Image &image, VkFormat format, VkImageLayout old_layout, VkImageLayout new_layout);
 
-        void setViewport(const VkRect2D &rect);
-        void setScissor(VkRect2D rect);
+        void setViewport(VkViewport *viewport);
+        void setScissor(VkRect2D *scissor);
     };
 
     template <typename CommandBufferType>
@@ -281,6 +281,79 @@ namespace gpu {
         }
     };
 
+    namespace shader {
+        struct CompiledShader {
+            VkShaderStageFlagBits type;
+            const char* name;
+            const char* entry_point_name;
+            uint32_t *code;
+            u64 size;
+        };
+
+        CompiledShader CreateCompiledShaderFromSourceString(const char* glsl_source, VkShaderStageFlagBits type, const char* name = "shader", const char* entry_point_name = "main");
+        CompiledShader CreateCompiledShaderFromSourceFile(const char* source_file, VkShaderStageFlagBits type, const char* name = "shader", const char* entry_point_name = "main");
+        CompiledShader CreateCompiledShaderFromBinaryFile(const char* binary_file, VkShaderStageFlagBits type, const char* name = "shader", const char* entry_point_name = "main");
+    }
+
+    namespace pipeline {
+        struct PipelineStage {
+            VkShaderModule handle;
+            VkShaderModuleCreateInfo module_create_info;
+            VkPipelineShaderStageCreateInfo create_info;
+
+            void create(const shader::CompiledShader &compiled_shader);
+            void destroy();
+        };
+
+        struct Pipeline {
+            PipelineStage vertex_stage;
+            PipelineStage fragment_stage;
+
+            VkPipeline handle;
+            VkPipelineLayout layout;
+
+            bool create(const shader::CompiledShader &vertex_shader_compiled_binary,
+                        const shader::CompiledShader &fragment_shader_compiled_binary,
+                        bool is_wireframe = false);
+
+            bool createFromBinaryData(
+                uint32_t* vertex_shader_binary_data, size_t vertex_shader_data_size,
+                uint32_t* fragment_shader_binary_file, size_t fragment_shader_data_size,
+                const char *vertex_shader_name = "vertex_shader",
+                const char *fragment_shader_name = "fragment_shader",
+                const char *vertex_shader_entry_point_name = "main",
+                const char *fragment_shader_entry_point_name = "main");
+
+            bool createFromBinaryFiles(
+                const char* vertex_shader_binary_file,
+                const char* fragment_shader_binary_file,
+                const char *vertex_shader_name = "vertex_shader",
+                const char *fragment_shader_name = "fragment_shader",
+                const char *vertex_shader_entry_point_name = "main",
+                const char *fragment_shader_entry_point_name = "main");
+
+            bool createFromSourceFiles(
+                const char* vertex_shader_source_file,
+                const char* fragment_shader_source_file,
+                const char *vertex_shader_name = "vertex_shader",
+                const char *fragment_shader_name = "fragment_shader",
+                const char *vertex_shader_entry_point_name = "main",
+                const char *fragment_shader_entry_point_name = "main");
+
+            bool createFromSourceStrings(
+                const char* vertex_shader_source_string,
+                const char* fragment_shader_source_string,
+                const char *vertex_shader_name = "vertex_shader",
+                const char *fragment_shader_name = "fragment_shader",
+                const char *vertex_shader_entry_point_name = "main",
+                const char *fragment_shader_entry_point_name = "main");
+
+            void destroy();
+        };
+
+        Pipeline main_pipeline;
+    }
+
     namespace graphics {
         VkQueue queue;
         unsigned int queue_family_index;
@@ -291,6 +364,7 @@ namespace gpu {
 
             bool beginRenderPass(RenderPass &renderpass, VkFramebuffer framebuffer); //, RenderTarget &render_target);
             bool endRenderPass();
+            void bindPipeline(const pipeline::Pipeline &pipeline);
         };
 
         struct GraphicsCommandPool : CommandPool<GraphicsCommandBuffer> {
@@ -348,6 +422,8 @@ namespace gpu {
     }
 
     namespace present {
+        VkViewport main_viewport;
+        VkRect2D main_scissor;
         VkSwapchainKHR swapchain;
         VkQueue queue;
         unsigned int queue_family_index;

@@ -3,20 +3,12 @@
 #include "./base.h"
 
 namespace gpu {
-    void CommandBuffer::setViewport(const VkRect2D &rect) {
-        VkViewport viewport;
-        viewport.x = (float)rect.offset.x;
-        viewport.y = (float)rect.offset.y;
-        viewport.width = (float)rect.extent.width;
-        viewport.height = (float)rect.extent.height;
-        viewport.minDepth = 0.0f;
-        viewport.maxDepth = 1.0f;
-
-        vkCmdSetViewport(handle, 0, 1, &viewport);
+    void CommandBuffer::setViewport(VkViewport *viewport) {
+        vkCmdSetViewport(handle, 0, 1, viewport);
     }
 
-    void CommandBuffer::setScissor(VkRect2D rect) {
-        vkCmdSetScissor(handle, 0, 1, &rect);
+    void CommandBuffer::setScissor(VkRect2D *scissor) {
+        vkCmdSetScissor(handle, 0, 1, scissor);
     }
 
     void CommandBuffer::transitionImageLayout(Image &image, VkFormat format, VkImageLayout old_layout, VkImageLayout new_layout) {

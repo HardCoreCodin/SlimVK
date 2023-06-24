@@ -7,7 +7,7 @@ namespace gpu {
         void SwapchainFrame::regenerateFrameBuffer(u32 width, u32 height) {
             if (framebuffer.handle) framebuffer.destroy();
             VkImageView image_views[2] = {image.view, depth_image.view};
-            framebuffer.create(width, height, main_render_pass.handle, image_views, 2);
+            framebuffer.create(width, height, main_render_pass.handle, image_views, 1);
         }
 
         void SwapchainFrame::create(u32 width, u32 height, VkImage image_handle, u32 index) {
