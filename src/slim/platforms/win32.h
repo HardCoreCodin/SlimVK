@@ -241,13 +241,13 @@ int Win32_EntryPoint(HINSTANCE hInstance, int nCmdShow = SW_SHOW) {
     if (!CURRENT_APP->is_running)
         return -1;
 
+    CURRENT_APP->_init();
+
     Win32_window_dc = GetDC(Win32_window);
 
     SetICMMode(Win32_window_dc, ICM_OFF);
 
     ShowWindow(Win32_window, nCmdShow);
-
-    CURRENT_APP->_init();
 
     MSG message;
     while (true) {

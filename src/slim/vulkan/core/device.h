@@ -74,10 +74,10 @@ namespace gpu {
         }
 
         bool currentPhysicalDeviceMeetsTheRequirements() {
-            graphics::queue_family_index = -1;
+            graphics_queue_family_index = -1;
             present::queue_family_index = -1;
-            compute::queue_family_index = -1;
-            transfer::queue_family_index = -1;
+            compute_queue_family_index = -1;
+            transfer_queue_family_index = -1;
 
             if (requirements::discrete_gpu) {
                 if (properties.deviceType != VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
@@ -112,8 +112,8 @@ namespace gpu {
                 unsigned char current_transfer_score = 0;
 
                 // Check if the current physical device supports a graphics queue:
-                if (graphics::queue_family_index == -1 && queue_families[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
-                    graphics::queue_family_index = i;
+                if (graphics_queue_family_index == -1 && queue_families[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+                    graphics_queue_family_index = i;
                     current_transfer_score++;
 
                     // If also a present queue, this prioritizes grouping of the 2.
@@ -127,7 +127,7 @@ namespace gpu {
 
                 // Check if the current physical device supports a compute queue:
                 if (queue_families[i].queueFlags & VK_QUEUE_COMPUTE_BIT) {
-                    compute::queue_family_index = i;
+                    compute_queue_family_index = i;
                     current_transfer_score++;
                 }
 
@@ -137,7 +137,7 @@ namespace gpu {
                     // This increases the chance that it is a dedicated transfer queue.
                     if (current_transfer_score <= min_transfer_score) {
                         min_transfer_score = current_transfer_score;
-                        transfer::queue_family_index = i;
+                        transfer_queue_family_index = i;
                     }
                 }
             }
@@ -152,7 +152,7 @@ namespace gpu {
                         present::queue_family_index = i;
 
                         // For troubleshooting purposes, check and log about queue sharing:
-                        if (present::queue_family_index != graphics::queue_family_index)
+                        if (present::queue_family_index != graphics_queue_family_index)
                             SLIM_LOG_WARNING("Warning: Different queue index used for present vs graphics: %u.", i);
 
                         break;
@@ -163,21 +163,21 @@ namespace gpu {
             // Print out some info about the device
             SLIM_LOG_INFO("| Graphics | Presentation | Compute | Transfer | Name");
             SLIM_LOG_INFO("|       %d |           %d |      %d |       %d | $s",
-                          graphics::queue_family_index != -1,
+                          graphics_queue_family_index != -1,
                           present::queue_family_index != -1,
-                          compute::queue_family_index != -1,
-                          transfer::queue_family_index != -1,
+                          compute_queue_family_index != -1,
+                          transfer_queue_family_index != -1,
                           properties.deviceName);
 
-            if ((!requirements::graphics || (requirements::graphics && graphics::queue_family_index != -1)) &&
+            if ((!requirements::graphics || (requirements::graphics && graphics_queue_family_index != -1)) &&
                 (!requirements::present || (requirements::present && present::queue_family_index != -1)) &&
-                (!requirements::compute || (requirements::compute && compute::queue_family_index != -1)) &&
-                (!requirements::transfer || (requirements::transfer && transfer::queue_family_index != -1))) {
+                (!requirements::compute || (requirements::compute && compute_queue_family_index != -1)) &&
+                (!requirements::transfer || (requirements::transfer && transfer_queue_family_index != -1))) {
                 SLIM_LOG_INFO("Current device is meeting the queue requirements");
-                SLIM_LOG_TRACE("Graphics Queue Family Index: %i", graphics::queue_family_index);
+                SLIM_LOG_TRACE("Graphics Queue Family Index: %i", graphics_queue_family_index);
                 SLIM_LOG_TRACE("Present Queue Family Index:  %i", present::queue_family_index);
-                SLIM_LOG_TRACE("Transfer Queue Family Index: %i", transfer::queue_family_index);
-                SLIM_LOG_TRACE("Compute Queue Family Index:  %i", compute::queue_family_index);
+                SLIM_LOG_TRACE("Transfer Queue Family Index: %i", transfer_queue_family_index);
+                SLIM_LOG_TRACE("Compute Queue Family Index:  %i", compute_queue_family_index);
 
                 _device::querySupportForSurfaceFormatsAndPresentModes();
                 if (_device::surface_format_count < 1 ||
@@ -273,8 +273,8 @@ namespace gpu {
 
             SLIM_LOG_INFO("Creating logical device...");
             // NOTE: Do not create additional queues for shared indices.
-            present_shares_graphics_queue = graphics::queue_family_index == present::queue_family_index;
-            transfer_shares_graphics_queue = graphics::queue_family_index == transfer::queue_family_index;
+            present_shares_graphics_queue = graphics_queue_family_index == present::queue_family_index;
+            transfer_shares_graphics_queue = graphics_queue_family_index == transfer_queue_family_index;
 
             u32 index_count = 1;
             if (!present_shares_graphics_queue) index_count++;
@@ -282,9 +282,9 @@ namespace gpu {
 
             u32 indices[4];
             u8 index = 0;
-            indices[index++] = graphics::queue_family_index;
+            indices[index++] = graphics_queue_family_index;
             if (!present_shares_graphics_queue) indices[index++] = present::queue_family_index;
-            if (!transfer_shares_graphics_queue) indices[index++] = transfer::queue_family_index;
+            if (!transfer_shares_graphics_queue) indices[index++] = transfer_queue_family_index;
 
             VkDeviceQueueCreateInfo queue_create_infos[4];
             f32 queue_priority = 1.0f;
@@ -332,16 +332,16 @@ namespace gpu {
             SLIM_LOG_INFO("Logical device created");
 
             // Get queues.
-            vkGetDeviceQueue(device, graphics::queue_family_index, 0, &graphics::queue);
+            vkGetDeviceQueue(device, graphics_queue_family_index, 0, &graphics_queue);
             vkGetDeviceQueue(device, present::queue_family_index, 0, &present::queue);
-            vkGetDeviceQueue(device, transfer::queue_family_index, 0, &transfer::queue);
+            vkGetDeviceQueue(device, transfer_queue_family_index, 0, &transfer_queue);
             SLIM_LOG_INFO("Queues obtained");
 
             present::command_pool.create();
             if (present_shares_graphics_queue)
-                graphics::command_pool.handle = present::command_pool.handle;
+                graphics_command_pool.handle = present::command_pool.handle;
             else
-                graphics::command_pool.create();
+                graphics_command_pool.create();
 
             return true;
         }
@@ -359,20 +359,20 @@ namespace gpu {
         }
 
         void destroy() {
-            graphics::queue = nullptr;
+            graphics_queue = nullptr;
             present::queue = nullptr;
-            compute::queue = nullptr;
-            transfer::queue = nullptr;
-            graphics::queue_family_index = -1;
+            compute_queue = nullptr;
+            transfer_queue = nullptr;
+            graphics_queue_family_index = -1;
             present::queue_family_index = -1;
-            compute::queue_family_index = -1;
-            transfer::queue_family_index = -1;
+            compute_queue_family_index = -1;
+            transfer_queue_family_index = -1;
 
             SLIM_LOG_INFO("Destroying command pools...");
 
             present::command_pool.destroy();
             if (!present_shares_graphics_queue)
-                graphics::command_pool.destroy();
+                graphics_command_pool.destroy();
 
             SLIM_LOG_INFO("Destroying logical device...");
             if (device) {

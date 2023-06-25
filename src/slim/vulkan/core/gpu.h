@@ -11,6 +11,7 @@
 #include "./render_pass.h"
 #include "./shader.h"
 #include "./pipeline.h"
+#include "./buffer.h"
 
 
 namespace gpu {
@@ -30,7 +31,7 @@ namespace gpu {
         present::graphics_command_buffers[present::current_image_index].setScissor(&rect);
     }
 
-    bool init(u32 width = DEFAULT_WIDTH, u32 height = DEFAULT_HEIGHT, const char* app_name = "SlimVK") {
+    bool initGPU(u32 width = DEFAULT_WIDTH, u32 height = DEFAULT_HEIGHT, const char* app_name = "SlimVK") {
         if (!_instance::init(app_name)) {
             SLIM_LOG_FATAL("Failed to initialize Vulkan instance!");
             return false;
@@ -98,56 +99,26 @@ namespace gpu {
         // by this list.
         for (u32 i = 0; i < present::image_count; i++) {
             present::images_in_flight[i] = nullptr;
-            graphics::command_pool.allocate(present::graphics_command_buffers[i],true);
+            graphics_command_pool.allocate(present::graphics_command_buffers[i],true);
         }
         SLIM_LOG_DEBUG("Vulkan command buffers created.");
 
-        setViewportAndScissorRect({
-                                  0,
-                                  0,
+        setViewportAndScissorRect({0, 0,
                                   present::framebuffer_width,
-                                  present::framebuffer_height
-                              });
+                                  present::framebuffer_height});
 
 //        pipeline::main_pipeline.createFromBinaryFiles(vertex_shader_file_path, fragment_shader_file_path);
-        pipeline::main_pipeline.createFromSourceStrings(vertex_shader_source, fragment_shader_source);
 
-        // Create buffers
-
-//        // Geometry vertex buffer
-//        const u64 vertex_buffer_size = sizeof(vertex_3d) * 1024 * 1024;
-//        if (!renderer_renderbuffer_create(RENDERBUFFER_TYPE_VERTEX, vertex_buffer_size, true, &context->object_vertex_buffer)) {
-//            KERROR("Error creating vertex buffer.");
-//            return false;
-//        }
-//        renderer_renderbuffer_bind(&context->object_vertex_buffer, 0);
-//
-//        // Geometry index buffer
-//        const u64 index_buffer_size = sizeof(u32) * 1024 * 1024;
-//        if (!renderer_renderbuffer_create(RENDERBUFFER_TYPE_INDEX, index_buffer_size, true, &context->object_index_buffer)) {
-//            KERROR("Error creating index buffer.");
-//            return false;
-//        }
-//        renderer_renderbuffer_bind(&context->object_index_buffer, 0);
-//
-//        // Mark all geometries as invalid
-//        for (u32 i = 0; i < VULKAN_MAX_GEOMETRY_COUNT; ++i) {
-//            context->geometries[i].id = INVALID_ID;
-//        }
-//
         SLIM_LOG_INFO("Vulkan renderer initialized successfully.");
         return true;
     }
 
-    void shutdown() {
+    void waitForGPU() {
         vkDeviceWaitIdle(device);
+    }
 
-        // Destroy in the opposite order of creation.
-        // Destroy buffers
-//        renderer_renderbuffer_destroy(&context->object_vertex_buffer);
-//        renderer_renderbuffer_destroy(&context->object_index_buffer);
-
-        pipeline::main_pipeline.destroy();
+    void shutdownGPU() {
+        vkDeviceWaitIdle(device);
 
         // Command buffers
         for (u32 i = 0; i < present::image_count; ++i)
@@ -193,25 +164,24 @@ namespace gpu {
         main_render_pass.config.rect = {0, 0, width, height};
         vkDeviceWaitIdle(device);
         present::recreateSwapchain();
+        setViewportAndScissorRect({0, 0,
+                                   present::framebuffer_width,
+                                   present::framebuffer_height});
     }
 
     void beginRenderPass() {
-        if (graphics::command_buffer) graphics::command_buffer->beginRenderPass(main_render_pass, present::framebuffer->handle);
+        if (graphics_command_buffer) graphics_command_buffer->beginRenderPass(main_render_pass, present::framebuffer->handle);
         else SLIM_LOG_WARNING("beginRenderPass: No command buffer")
-
-        graphics::command_buffer->bindPipeline(pipeline::main_pipeline);
-
-        vkCmdDraw(graphics::command_buffer->handle, 3, 1, 0, 0);;
     }
 
     void endRenderPass() {
-        if (graphics::command_buffer) graphics::command_buffer->endRenderPass();
+        if (graphics_command_buffer) graphics_command_buffer->endRenderPass();
         else SLIM_LOG_WARNING("endRenderPass: No command buffer")
     }
 
     bool beginFrame() {
         present::framebuffer = nullptr;
-        graphics::command_buffer = nullptr;
+        graphics_command_buffer = nullptr;
 
         // Check if recreating swap chain and boot out.
         if (present::recreating_swapchain) {
@@ -262,10 +232,10 @@ namespace gpu {
 
         // Begin recording commands.
         present::framebuffer = &present::swapchain_frames[present::current_image_index].framebuffer;
-        graphics::command_buffer = &present::graphics_command_buffers[present::current_image_index];
+        graphics_command_buffer = &present::graphics_command_buffers[present::current_image_index];
 
-        graphics::command_buffer->reset();
-        graphics::command_buffer->begin(false, false, false);
+        graphics_command_buffer->reset();
+        graphics_command_buffer->begin(false, false, false);
 
         // Dynamic state
         setViewportAndScissor({
@@ -280,12 +250,12 @@ namespace gpu {
     }
 
     bool endFrame() {
-        if (!graphics::command_buffer) {
+        if (!graphics_command_buffer) {
             SLIM_LOG_WARNING("endFrame: No command buffer")
             return false;
         }
 
-        graphics::command_buffer->end();
+        graphics_command_buffer->end();
 
         // Make sure the previous frame is not using this image (i.e. its fence is being waited on)
         if (present::images_in_flight[present::current_image_index] != VK_NULL_HANDLE) {
@@ -323,7 +293,7 @@ namespace gpu {
         VkPipelineStageFlags flags[1] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
         submit_info.pWaitDstStageMask = flags;
 
-        VkResult result = vkQueueSubmit(graphics::queue, 1, &submit_info, present::in_flight_fences[present::current_frame]);
+        VkResult result = vkQueueSubmit(graphics_queue, 1, &submit_info, present::in_flight_fences[present::current_frame]);
         if (result != VK_SUCCESS) {
             SLIM_LOG_ERROR("vkQueueSubmit failed with result: %s", getVulkanResultString(result, true));
             return false;

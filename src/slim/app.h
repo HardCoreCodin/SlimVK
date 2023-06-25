@@ -1,13 +1,13 @@
 #pragma once
 
 #include "./core/base.h"
-
+#include "./vulkan/core/gpu.h"
 
 struct SlimApp {
     timers::Timer update_timer, render_timer;
     bool is_running{true};
     bool is_minimized{true};
-    bool blit{true};
+    bool blit{false};
     bool suspend_when_minimized{true};
 
     virtual void OnInit() {};
@@ -30,9 +30,11 @@ struct SlimApp {
         OnUpdate(update_timer.delta_time);
         update_timer.endFrame();
 
+        gpu::beginFrame();
         render_timer.beginFrame();
         OnRender();
         render_timer.endFrame();
+        gpu::endFrame();
     };
 
     INLINE void _minimize() {
@@ -46,6 +48,7 @@ struct SlimApp {
     }
 
     INLINE void _resize(u16 width, u16 height) {
+        gpu::resize(width, height);
         OnWindowResize(width, height);
         OnWindowRedraw();
     }
@@ -57,7 +60,10 @@ struct SlimApp {
         OnWindowRedraw();
     }
 
-    INLINE void _init() { OnInit(); }
+    INLINE void _init() {
+        gpu::initGPU();
+        OnInit();
+    }
     INLINE void _mouseButtonUp(  mouse::Button &mouse_button) {};
     INLINE void _mouseButtonDown(mouse::Button &mouse_button) {};
     INLINE void _mouseButtonDoubleClicked(mouse::Button &mouse_button) {};
@@ -65,7 +71,11 @@ struct SlimApp {
     INLINE void _mousePositionSet(i32 x, i32 y) {};
     INLINE void _mouseMovementSet(i32 x, i32 y) {};
     INLINE void _mouseRawMovementSet(i32 x, i32 y) {};
-    INLINE void _shutdown() { OnShutdown(); }
+    INLINE void _shutdown() {
+        gpu::waitForGPU();
+        OnShutdown();
+        gpu::shutdownGPU();
+    }
     INLINE void _keyChanged(u8 key, bool pressed) { OnKeyChanged(key, pressed); }
 };
 

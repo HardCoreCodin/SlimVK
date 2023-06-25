@@ -162,9 +162,9 @@ namespace gpu {
             swapchain_create_info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 
             // Setup the queue family indices
-            if (graphics::queue_family_index != present::queue_family_index) {
+            if (graphics_queue_family_index != present::queue_family_index) {
                 const unsigned int queueFamilyIndices[] = {
-                    graphics::queue_family_index,
+                    graphics_queue_family_index,
                     present::queue_family_index
                 };
                 swapchain_create_info.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
@@ -230,7 +230,7 @@ namespace gpu {
             // Clear these out just in case.
             for (u32 i = 0; i < image_count; ++i) {
                 images_in_flight[i] = nullptr;
-                graphics::command_pool.allocate(graphics_command_buffers[i],true);
+                graphics_command_pool.allocate(graphics_command_buffers[i],true);
             }
 
             // Mark as recreating if the dimensions are valid.

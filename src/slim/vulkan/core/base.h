@@ -44,48 +44,99 @@
 #define VULKAN_SHADER_MAX_PUSH_CONST_RANGES 32
 #define TEXTURE_NAME_MAX_LENGTH 512
 
-//
-//typedef enum memory_tag {
-//    // For temporary use. Should be assigned one of the below or have a new tag created.
-//    MEMORY_TAG_UNKNOWN,
-//    MEMORY_TAG_ARRAY,
-//    MEMORY_TAG_LINEAR_ALLOCATOR,
-//    MEMORY_TAG_DARRAY,
-//    MEMORY_TAG_DICT,
-//    MEMORY_TAG_RING_QUEUE,
-//    MEMORY_TAG_BST,
-//    MEMORY_TAG_STRING,
-//    MEMORY_TAG_ENGINE,
-//    MEMORY_TAG_JOB,
-//    MEMORY_TAG_TEXTURE,
-//    MEMORY_TAG_MATERIAL_INSTANCE,
-//    MEMORY_TAG_RENDERER,
-//    MEMORY_TAG_GAME,
-//    MEMORY_TAG_TRANSFORM,
-//    MEMORY_TAG_ENTITY,
-//    MEMORY_TAG_ENTITY_NODE,
-//    MEMORY_TAG_SCENE,
-//    MEMORY_TAG_RESOURCE,
-//    MEMORY_TAG_VULKAN,
-//    // "External" vulkan allocations, for reporting purposes only.
-//    MEMORY_TAG_VULKAN_EXT,
-//    MEMORY_TAG_DIRECT3D,
-//    MEMORY_TAG_OPENGL,
-//    // Representation of GPU-local/vram
-//    MEMORY_TAG_GPU_LOCAL,
-//    MEMORY_TAG_BITMAP_FONT,
-//    MEMORY_TAG_SYSTEM_FONT,
-//    MEMORY_TAG_KEYMAP,
-//    MEMORY_TAG_HASHTABLE,
-//
-//    MEMORY_TAG_MAX_TAGS
-//}
-
 
 namespace gpu {
     VkInstance instance;
     VkPhysicalDevice physical_device;
     VkDevice device;
+
+    enum VertexAttributeFormat {
+        F32,
+        F32x2,
+        F32x3,
+        F32x4,
+        I8, U8,
+        I16, U16,
+        I32, U32
+    };
+
+    static VkFormat VERTEX_ATTRIBUTE_FORMATS[11] = {
+        VK_FORMAT_R32_SFLOAT,
+        VK_FORMAT_R32G32_SFLOAT,
+        VK_FORMAT_R32G32B32_SFLOAT,
+        VK_FORMAT_R32G32B32A32_SFLOAT,
+        VK_FORMAT_R8_SINT,
+        VK_FORMAT_R8_UINT,
+        VK_FORMAT_R16_SINT,
+        VK_FORMAT_R16_UINT,
+        VK_FORMAT_R32_SINT,
+        VK_FORMAT_R32_UINT
+    };
+
+    struct VertexAttribute {
+        VertexAttributeFormat format;
+        u32 size;
+    };
+
+    struct VertexDescriptor {
+        u32 vertex_input_stride;
+        u32 attribute_count;
+        VertexAttribute attributes[16];
+    };
+
+    enum class BufferType {
+        Unknown,
+        Vertex,
+        Index,
+        Uniform,
+        Staging,
+        Read,
+        Storage
+    };
+
+    struct Buffer {
+        BufferType type;
+
+        VkBuffer handle;
+        VkBufferUsageFlagBits usage;
+        bool is_locked;
+        VkDeviceMemory memory;
+        VkMemoryRequirements memory_requirements;
+        i32 memory_index;
+        u32 memory_property_flags;
+
+        u64 total_size;
+        u64 freelist_memory_requirement;
+
+        INLINE bool isDeviceLocal() const { return (memory_property_flags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) == VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT; }
+        INLINE bool isHostVisible() const { return (memory_property_flags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) == VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT; }
+        INLINE bool isHostCoherent() const { return (memory_property_flags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) == VK_MEMORY_PROPERTY_HOST_COHERENT_BIT; }
+
+        bool create(BufferType buffer_type, u64 size);
+        void destroy();
+        bool resize(u64 new_size);
+        bool flush(u64 size = 0, u64 offset = 0) const;
+        bool download(void** to, u64 size = 0, u64 from_offset = 0);
+        bool upload(const void* from, u64 size = 0, u64 to_offset = 0);
+        bool copyTo(const Buffer &to_buffer, u64 size = 0, u64 from_offset = 0, u64 to_offset = 0) const;
+
+    protected:
+        void* data(u64 size, u64 offset = 0) const;
+        void read(void* to, u64 size, u64 from_offset = 0) const;
+        void write(const void* from, u64 size, u64 to_offset = 0);
+    };
+
+    struct VertexBuffer : Buffer { bool create(u64 size) { *this = {}; return Buffer::create(BufferType::Vertex, size); } };
+    struct IndexBuffer : Buffer {
+        VkIndexType index_type = VK_INDEX_TYPE_UINT32;
+
+        bool create(u64 size, VkIndexType type = VK_INDEX_TYPE_UINT32) {
+            *this = {};
+            bool result = Buffer::create(BufferType::Index, size);
+            index_type = type;
+            return result;
+        }
+    };
 
     enum class State {
         Ready,
@@ -189,9 +240,6 @@ namespace gpu {
 
     RenderPass main_render_pass;
 
-//    renderbuffer object_vertex_buffer; // The object vertex buffer, used to hold geometry vertices
-//    renderbuffer object_index_buffer;  // The object index buffer, used to hold geometry indices
-//    vulkan_geometry_data geometries[VULKAN_MAX_GEOMETRY_COUNT]; // A collection of loaded geometries
 
     struct Fence {
         VkFence handle = nullptr;
@@ -225,20 +273,14 @@ namespace gpu {
     public:
         State state = State::Ready;
 
-        explicit CommandBuffer(VkCommandBuffer buffer = nullptr, VkCommandPool pool = nullptr, VkQueue queue = nullptr, unsigned int queue_family_index = 0) :
-            handle{buffer}, pool{pool}, queue{queue}, queue_family_index{queue_family_index} {}
-
+        explicit CommandBuffer(VkCommandBuffer buffer = nullptr, VkCommandPool pool = nullptr, VkQueue queue = nullptr, unsigned int queue_family_index = 0) : handle{buffer}, pool{pool}, queue{queue}, queue_family_index{queue_family_index} {}
         void begin(bool is_single_use, bool is_renderpass_continue, bool is_simultaneous_use);
         void end();
-
         void beginSingleUse();
         void endSingleUse();
-
         void reset();
         void free();
-
         void transitionImageLayout(Image &image, VkFormat format, VkImageLayout old_layout, VkImageLayout new_layout);
-
         void setViewport(VkViewport *viewport);
         void setScissor(VkRect2D *scissor);
     };
@@ -281,145 +323,141 @@ namespace gpu {
         }
     };
 
-    namespace shader {
-        struct CompiledShader {
-            VkShaderStageFlagBits type;
-            const char* name;
-            const char* entry_point_name;
-            uint32_t *code;
-            u64 size;
-        };
+    struct CompiledShader {
+        VkShaderStageFlagBits type;
+        const char* name;
+        const char* entry_point_name;
+        uint32_t *code;
+        u64 size;
+    };
 
-        CompiledShader CreateCompiledShaderFromSourceString(const char* glsl_source, VkShaderStageFlagBits type, const char* name = "shader", const char* entry_point_name = "main");
-        CompiledShader CreateCompiledShaderFromSourceFile(const char* source_file, VkShaderStageFlagBits type, const char* name = "shader", const char* entry_point_name = "main");
-        CompiledShader CreateCompiledShaderFromBinaryFile(const char* binary_file, VkShaderStageFlagBits type, const char* name = "shader", const char* entry_point_name = "main");
-    }
+    CompiledShader CreateCompiledShaderFromSourceString(const char* glsl_source, VkShaderStageFlagBits type, const char* name = "shader", const char* entry_point_name = "main");
+    CompiledShader CreateCompiledShaderFromSourceFile(const char* source_file, VkShaderStageFlagBits type, const char* name = "shader", const char* entry_point_name = "main");
+    CompiledShader CreateCompiledShaderFromBinaryFile(const char* binary_file, VkShaderStageFlagBits type, const char* name = "shader", const char* entry_point_name = "main");
 
-    namespace pipeline {
-        struct PipelineStage {
-            VkShaderModule handle;
-            VkShaderModuleCreateInfo module_create_info;
-            VkPipelineShaderStageCreateInfo create_info;
+    struct GraphicsPipelineStage {
+        VkShaderModule handle;
+        VkShaderModuleCreateInfo module_create_info;
+        VkPipelineShaderStageCreateInfo create_info;
 
-            void create(const shader::CompiledShader &compiled_shader);
-            void destroy();
-        };
+        void create(const CompiledShader &compiled_shader);
+        void destroy();
+    };
 
-        struct Pipeline {
-            PipelineStage vertex_stage;
-            PipelineStage fragment_stage;
+    struct GraphicsPipeline {
+        GraphicsPipelineStage vertex_stage;
+        GraphicsPipelineStage fragment_stage;
 
-            VkPipeline handle;
-            VkPipelineLayout layout;
+        VkPipeline handle;
+        VkPipelineLayout layout;
 
-            bool create(const shader::CompiledShader &vertex_shader_compiled_binary,
-                        const shader::CompiledShader &fragment_shader_compiled_binary,
-                        bool is_wireframe = false);
+        bool create(
+            const VertexDescriptor &vertex_descriptor,
+            const CompiledShader &vertex_shader_compiled_binary,
+            const CompiledShader &fragment_shader_compiled_binary,
+            bool is_wireframe = false);
 
-            bool createFromBinaryData(
-                uint32_t* vertex_shader_binary_data, size_t vertex_shader_data_size,
-                uint32_t* fragment_shader_binary_file, size_t fragment_shader_data_size,
-                const char *vertex_shader_name = "vertex_shader",
-                const char *fragment_shader_name = "fragment_shader",
-                const char *vertex_shader_entry_point_name = "main",
-                const char *fragment_shader_entry_point_name = "main");
+        bool createFromBinaryData(
+            const VertexDescriptor &vertex_descriptor,
+            uint32_t* vertex_shader_binary_data, size_t vertex_shader_data_size,
+            uint32_t* fragment_shader_binary_file, size_t fragment_shader_data_size,
+            const char *vertex_shader_name = "vertex_shader",
+            const char *fragment_shader_name = "fragment_shader",
+            const char *vertex_shader_entry_point_name = "main",
+            const char *fragment_shader_entry_point_name = "main");
 
-            bool createFromBinaryFiles(
-                const char* vertex_shader_binary_file,
-                const char* fragment_shader_binary_file,
-                const char *vertex_shader_name = "vertex_shader",
-                const char *fragment_shader_name = "fragment_shader",
-                const char *vertex_shader_entry_point_name = "main",
-                const char *fragment_shader_entry_point_name = "main");
+        bool createFromBinaryFiles(
+            const VertexDescriptor &vertex_descriptor,
+            const char* vertex_shader_binary_file,
+            const char* fragment_shader_binary_file,
+            const char *vertex_shader_name = "vertex_shader",
+            const char *fragment_shader_name = "fragment_shader",
+            const char *vertex_shader_entry_point_name = "main",
+            const char *fragment_shader_entry_point_name = "main");
 
-            bool createFromSourceFiles(
-                const char* vertex_shader_source_file,
-                const char* fragment_shader_source_file,
-                const char *vertex_shader_name = "vertex_shader",
-                const char *fragment_shader_name = "fragment_shader",
-                const char *vertex_shader_entry_point_name = "main",
-                const char *fragment_shader_entry_point_name = "main");
+        bool createFromSourceFiles(
+            const VertexDescriptor &vertex_descriptor,
+            const char* vertex_shader_source_file,
+            const char* fragment_shader_source_file,
+            const char *vertex_shader_name = "vertex_shader",
+            const char *fragment_shader_name = "fragment_shader",
+            const char *vertex_shader_entry_point_name = "main",
+            const char *fragment_shader_entry_point_name = "main");
 
-            bool createFromSourceStrings(
-                const char* vertex_shader_source_string,
-                const char* fragment_shader_source_string,
-                const char *vertex_shader_name = "vertex_shader",
-                const char *fragment_shader_name = "fragment_shader",
-                const char *vertex_shader_entry_point_name = "main",
-                const char *fragment_shader_entry_point_name = "main");
+        bool createFromSourceStrings(
+            const VertexDescriptor &vertex_descriptor,
+            const char* vertex_shader_source_string,
+            const char* fragment_shader_source_string,
+            const char *vertex_shader_name = "vertex_shader",
+            const char *fragment_shader_name = "fragment_shader",
+            const char *vertex_shader_entry_point_name = "main",
+            const char *fragment_shader_entry_point_name = "main");
 
-            void destroy();
-        };
+        void destroy();
+    };
 
-        Pipeline main_pipeline;
-    }
+    VkQueue graphics_queue;
+    unsigned int graphics_queue_family_index;
 
-    namespace graphics {
-        VkQueue queue;
-        unsigned int queue_family_index;
+    struct GraphicsCommandBuffer : CommandBuffer {
+        GraphicsCommandBuffer(VkCommandBuffer command_buffer_handle = nullptr, VkCommandPool command_pool = nullptr) :
+            CommandBuffer(command_buffer_handle, command_pool, graphics_queue, graphics_queue_family_index) {}
 
-        struct GraphicsCommandBuffer : CommandBuffer {
-            GraphicsCommandBuffer(VkCommandBuffer command_buffer_handle = nullptr, VkCommandPool command_pool = nullptr) :
-                CommandBuffer(command_buffer_handle, command_pool, graphics::queue, graphics::queue_family_index) {}
+        bool beginRenderPass(RenderPass &renderpass, VkFramebuffer framebuffer); //, RenderTarget &render_target);
+        bool endRenderPass();
+        void bind(const GraphicsPipeline &graphics_pipeline) const;
+        void bind(const VertexBuffer &vertex_buffer, u32 offset = 0) const;
+        void bind(const IndexBuffer &vertex_buffer, u32 offset = 0) const;
+        void draw(u32 vertex_count, u32 instance_count = 1, u32 first_vertex = 0, u32 first_instance = 0) const;
+    };
 
-            bool beginRenderPass(RenderPass &renderpass, VkFramebuffer framebuffer); //, RenderTarget &render_target);
-            bool endRenderPass();
-            void bindPipeline(const pipeline::Pipeline &pipeline);
-        };
+    struct GraphicsCommandPool : CommandPool<GraphicsCommandBuffer> {
+        void create() {
+            _create(graphics_queue_family_index);
+            SLIM_LOG_INFO("Graphics command pool created.")
+        }
+    };
 
-        struct GraphicsCommandPool : CommandPool<GraphicsCommandBuffer> {
-            void create() {
-                _create(queue_family_index);
-                SLIM_LOG_INFO("Graphics command pool created.")
-            }
-        };
+    GraphicsCommandBuffer *graphics_command_buffer = nullptr;
+    GraphicsCommandPool graphics_command_pool;
 
-        GraphicsCommandBuffer *command_buffer = nullptr;
+    VkQueue transfer_queue;
+    unsigned int transfer_queue_family_index;
 
-        GraphicsCommandPool command_pool;
-    }
+    struct TransferCommandBuffer : CommandBuffer {
+        TransferCommandBuffer(VkCommandBuffer command_buffer_handle = nullptr, VkCommandPool command_pool = nullptr) :
+            CommandBuffer(command_buffer_handle, command_pool, transfer_queue, transfer_queue_family_index) {}
 
-    namespace transfer {
-        VkQueue queue;
-        unsigned int queue_family_index;
+        void copyBufferToImage(VkBuffer buffer, Image &image);
+        void copyImageToBuffer(Image &image, VkBuffer buffer);
+        void copyPixelToBuffer(Image &image,  u32 x, u32 y, VkBuffer buffer);
+    };
 
-        struct TransferCommandBuffer : CommandBuffer {
-            TransferCommandBuffer(VkCommandBuffer command_buffer_handle = nullptr, VkCommandPool command_pool = nullptr) :
-                CommandBuffer(command_buffer_handle, command_pool, transfer::queue, transfer::queue_family_index) {}
+    struct TransferCommandPool : CommandPool<TransferCommandBuffer> {
+        void create() {
+            _create(transfer_queue_family_index);
+            SLIM_LOG_INFO("Transfer command pool created.")
+        }
+    };
 
-            void copyBufferToImage(VkBuffer buffer, Image &image);
-            void copyImageToBuffer(Image &image, VkBuffer buffer);
-            void copyPixelToBuffer(Image &image,  u32 x, u32 y, VkBuffer buffer);
-        };
+    TransferCommandPool transfer_command_pool;
 
-        struct TransferCommandPool : CommandPool<TransferCommandBuffer> {
-            void create() {
-                _create(queue_family_index);
-                SLIM_LOG_INFO("Transfer command pool created.")
-            }
-        };
+    VkQueue compute_queue;
+    unsigned int compute_queue_family_index;
 
-        TransferCommandPool command_pool;
-    }
+    struct ComputeCommandBuffer : CommandBuffer {
+        ComputeCommandBuffer(VkCommandBuffer command_buffer_handle = nullptr, VkCommandPool command_pool = nullptr) :
+            CommandBuffer(command_buffer_handle, command_pool, compute_queue, compute_queue_family_index) {}
+    };
 
-    namespace compute {
-        VkQueue queue;
-        unsigned int queue_family_index;
+    struct ComputeCommandPool : CommandPool<ComputeCommandBuffer> {
+        void create() {
+            _create(compute_queue_family_index);
+            SLIM_LOG_INFO("Compute command pool created.")
+        }
+    };
 
-        struct ComputeCommandBuffer : CommandBuffer {
-            ComputeCommandBuffer(VkCommandBuffer command_buffer_handle = nullptr, VkCommandPool command_pool = nullptr) :
-                CommandBuffer(command_buffer_handle, command_pool, compute::queue, compute::queue_family_index) {}
-        };
-
-        struct ComputeCommandPool : CommandPool<ComputeCommandBuffer> {
-            void create() {
-                _create(queue_family_index);
-                SLIM_LOG_INFO("Compute command pool created.")
-            }
-        };
-
-        ComputeCommandPool command_pool;
-    }
+    ComputeCommandPool compute_command_pool;
 
     namespace present {
         VkViewport main_viewport;
@@ -495,7 +533,7 @@ namespace gpu {
         };
 
         SwapchainFrame swapchain_frames[VULKAN_MAX_SWAPCHAIN_FRAME_COUNT];
-        graphics::GraphicsCommandBuffer graphics_command_buffers[VULKAN_MAX_SWAPCHAIN_FRAME_COUNT];
+        GraphicsCommandBuffer graphics_command_buffers[VULKAN_MAX_SWAPCHAIN_FRAME_COUNT];
 
         FrameBuffer *framebuffer = nullptr;
     }
