@@ -9,5 +9,4 @@ namespace gpu {
         FrameBuffer *framebuffer;
         u8 attachment_count;
     };
-
 }

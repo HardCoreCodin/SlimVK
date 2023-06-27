@@ -5,13 +5,7 @@
 #include <shaderc/shaderc.h>
 
 namespace gpu {
-
-
-    CompiledShader CreateCompiledShaderFromSourceString(const char* glsl_source, VkShaderStageFlagBits type, const char* name = "shader", const char* entry_point_name = "main");
-    CompiledShader CreateCompiledShaderFromSourceFile(const char* source_file, VkShaderStageFlagBits type, const char* name = "shader", const char* entry_point_name = "main");
-    CompiledShader CreateCompiledShaderFromBinaryFile(const char* binary_file, VkShaderStageFlagBits type, const char* name = "shader", const char* entry_point_name = "main");
-
-    CompiledShader CreateCompiledShaderFromSourceString(const char* glsl_source, VkShaderStageFlagBits type, const char* name, const char* entry_point_name) {
+    CompiledShader CreateCompiledShaderFromSourceString(const char* glsl_source, VkShaderStageFlagBits type, const char* name = "shader", const char* entry_point_name = "main") {
 //                char* s = (char*)source_string;
 //                while (*s++);
         size_t source_size = strlen(glsl_source); //s - (char*)source_string - 1;
@@ -77,13 +71,13 @@ namespace gpu {
 
     }
 
-    CompiledShader CreateCompiledShaderFromSourceFile(const char* source_file, VkShaderStageFlagBits type, const char* name, const char* entry_point_name) {
+    CompiledShader CreateCompiledShaderFromSourceFile(const char* source_file, VkShaderStageFlagBits type, const char* name = "shader", const char* entry_point_name = "main") {
         size_t file_size;
         const char* glsl_source = (char*)os::readEntireFile(source_file, &file_size);
         return CreateCompiledShaderFromSourceString(glsl_source, type, name, entry_point_name);
     }
 
-    CompiledShader CreateCompiledShaderFromBinaryFile(const char* binary_file, VkShaderStageFlagBits type, const char* name, const char* entry_point_name) {
+    CompiledShader CreateCompiledShaderFromBinaryFile(const char* binary_file, VkShaderStageFlagBits type, const char* name = "shader", const char* entry_point_name = "main") {
         CompiledShader compiled_shader{type, name, entry_point_name};
         compiled_shader.code = (uint32_t*)os::readEntireFile(binary_file, &compiled_shader.size);
         compiled_shader.size += compiled_shader.size % 4 ? (4 - (compiled_shader.size % 4)) : 0;

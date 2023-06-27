@@ -5,6 +5,39 @@
 
 namespace gpu {
     namespace _device {
+        namespace requirements {
+            bool discrete_gpu = true;
+            bool graphics = true;
+            bool present = true;
+            bool compute = true;
+            bool transfer = true;
+            bool local_host_visible = true;
+            bool sampler_anisotropy = false;
+        }
+
+        bool present_shares_graphics_queue;
+        bool transfer_shares_graphics_queue;
+
+        VkPhysicalDeviceProperties properties;
+        VkPhysicalDeviceMemoryProperties memory_properties;
+        VkPhysicalDeviceFeatures features;
+
+        VkSurfaceKHR surface;
+        VkSurfaceCapabilitiesKHR surface_capabilities;
+        VkSurfaceFormatKHR surface_formats[VULKAN_MAX_SURFACE_FORMATS];
+        unsigned int surface_format_count = 0;
+
+        VkPresentModeKHR present_modes[VULKAN_MAX_PRESENTATION_MODES];
+        unsigned int present_mode_count = 0;
+
+        VkExtensionProperties available_extensions[256];
+        unsigned int available_extensions_count = 0;
+
+        const char* enabled_extension_names[] = {
+            VK_KHR_SWAPCHAIN_EXTENSION_NAME
+        };
+        const unsigned int enabled_extensions_count = sizeof(enabled_extension_names) / sizeof(char*);
+
         i32 getMemoryIndex(
             u32 type_filter, // The memory types to find
             u32 property_flags // Memory properties that need to exist

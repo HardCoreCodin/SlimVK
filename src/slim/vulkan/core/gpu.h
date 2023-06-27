@@ -16,22 +16,6 @@
 
 
 namespace gpu {
-    void setViewportAndScissorRect(VkRect2D rect) {
-        present::main_scissor = rect;
-        present::main_viewport.x = (float)rect.offset.x;
-        present::main_viewport.y = (float)rect.offset.y;
-        present::main_viewport.width = (float)rect.extent.width;
-        present::main_viewport.height = (float)rect.extent.height;
-        present::main_viewport.minDepth = 0.0f;
-        present::main_viewport.maxDepth = 1.0f;
-    }
-
-    void setViewportAndScissor(VkRect2D rect) {
-        setViewportAndScissorRect(rect);
-        present::graphics_command_buffers[present::current_image_index].setViewport(&present::main_viewport);
-        present::graphics_command_buffers[present::current_image_index].setScissor(&rect);
-    }
-
     bool initGPU(u32 width = DEFAULT_WIDTH, u32 height = DEFAULT_HEIGHT, const char* app_name = "SlimVK") {
         if (!_instance::init(app_name)) {
             SLIM_LOG_FATAL("Failed to initialize Vulkan instance!");
@@ -55,9 +39,9 @@ namespace gpu {
             return false;
         }
 
-        present_command_pool.create();
+        present::command_pool.create();
         if (_device::present_shares_graphics_queue)
-            graphics_command_pool.handle = present_command_pool.handle;
+            graphics_command_pool.handle = present::command_pool.handle;
         else
             graphics_command_pool.create();
 
@@ -73,7 +57,7 @@ namespace gpu {
             SLIM_LOG_FATAL("Failed to find a supported format!")
         }
 
-        main_render_pass.create({
+        present::render_pass.create({
             "main_render_pass",
             {0, 0, width, height},
             Color{ 0.0f, 0.0f, 0.2f }, 1.0f, 0,
@@ -114,7 +98,7 @@ namespace gpu {
 
         SLIM_LOG_DEBUG("Vulkan command buffers created.");
 
-        setViewportAndScissorRect({0, 0,
+        present::setViewportAndScissorRect({0, 0,
                                   present::framebuffer_width,
                                   present::framebuffer_height});
 
@@ -150,12 +134,11 @@ namespace gpu {
         }
 
         present::destroySwapchain();
-
-        main_render_pass.destroy();
+        present::render_pass.destroy();
 
         SLIM_LOG_INFO("Destroying command pools...");
 
-        present_command_pool.destroy();
+        present::command_pool.destroy();
         if (!_device::present_shares_graphics_queue)
             graphics_command_pool.destroy();
 
@@ -176,20 +159,8 @@ namespace gpu {
         vkDestroyInstance(instance, nullptr);
     }
 
-    void resize(u32 width, u32 height) {
-        present::framebuffer_width = width;
-        present::framebuffer_height = height;
-        present::framebuffer_size_generation++;
-        main_render_pass.config.rect = {0, 0, width, height};
-        vkDeviceWaitIdle(device);
-        present::recreateSwapchain();
-        setViewportAndScissorRect({0, 0,
-                                   present::framebuffer_width,
-                                   present::framebuffer_height});
-    }
-
     void beginRenderPass() {
-        if (graphics_command_buffer) graphics_command_buffer->beginRenderPass(main_render_pass, present::framebuffer->handle);
+        if (graphics_command_buffer) graphics_command_buffer->beginRenderPass(present::render_pass, present::framebuffer->handle);
         else SLIM_LOG_WARNING("beginRenderPass: No command buffer")
     }
 
@@ -257,7 +228,7 @@ namespace gpu {
         graphics_command_buffer->begin(false, false, false);
 
         // Dynamic state
-        setViewportAndScissor({
+        present::setViewportAndScissor({
             0,
             0,
             present::framebuffer_width,

@@ -12,7 +12,7 @@ struct ExampleVulkanApp : SlimApp {
         index_buffer.create(INDEX_COUNT, sizeof(u16));
         vertex_buffer.upload(vertices);
         index_buffer.upload(indices);
-        graphics_pipeline.createFromSourceStrings(vertex_descriptor,
+        graphics_pipeline.createFromSourceStrings(present::render_pass, vertex_descriptor,
             vertex_shader_source_string,
             fragment_shader_source_string);
     }

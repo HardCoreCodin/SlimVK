@@ -146,114 +146,6 @@ namespace gpu {
         u64 size;
     };
 
-    namespace present {
-        VkViewport main_viewport;
-        VkRect2D main_scissor;
-        VkSwapchainKHR swapchain;
-
-        bool vsync = true;
-        bool power_saving = false;
-        u32 framebuffer_width = DEFAULT_WIDTH;
-        u32 framebuffer_height = DEFAULT_HEIGHT;
-        u64 framebuffer_size_generation = 0; // Current generation of framebuffer size. If it does not match framebuffer_size_last_generation, a new one should be generated
-        u64 framebuffer_size_last_generation = 0; // The generation of the framebuffer when it was last created. Set to framebuffer_size_generation when updated
-
-        VkRect2D viewport_rect;
-        VkRect2D scissor_rect;
-
-        u8 depth_channel_count; // The chosen depth format's number of channels
-        VkFormat depth_format; // The chosen supported depth format
-        VkSurfaceFormatKHR image_format;
-        VkPresentModeKHR present_mode;
-
-        // The maximum number of "images in flight" (images simultaneously being rendered to).
-        // Typically one less than the total number of images available.
-        u8 max_frames_in_flight = VULKAN_MAX_SWAPCHAIN_FRAME_COUNT - 1;
-        VkFence in_flight_fences[VULKAN_MAX_SWAPCHAIN_FRAME_COUNT - 1];
-        VkFence images_in_flight[VULKAN_MAX_SWAPCHAIN_FRAME_COUNT];
-
-        VkSemaphore image_available_semaphores[VULKAN_MAX_SWAPCHAIN_FRAME_COUNT - 1];
-        VkSemaphore queue_complete_semaphores[VULKAN_MAX_SWAPCHAIN_FRAME_COUNT - 1];
-
-        unsigned int image_count = 0; // The number of swapchain images
-
-//        texture* render_textures; // An array of render targets, which contain swapchain images
-//        texture* depth_textures; // An array of depth textures, one per frame
-
-        //Render targets used for on-screen rendering, one per frame. The images contained in these are created and owned by the swapchain
-//        render_target render_targets[3];
-//        render_target world_render_targets[VULKAN_MAX_FRAMES_IN_FLIGHTS]; // Render targets used for world rendering. One per frame
-
-//        const unsigned int in_flight_fence_count = VULKAN_MAX_FRAMES_IN_FLIGHTS - 1; // The current number of in-flight fences
-//        VkFence in_flight_fences[VULKAN_MAX_FRAMES_IN_FLIGHTS - 1]; // The in-flight fences, used to indicate to the application when a frame is busy/ready
-
-        u32 current_frame = 0; // The current frame
-        bool recreating_swapchain = false; // Indicates if the swapchain is currently being recreated
-        bool render_flag_changed = false;
-
-        unsigned int current_image_index = 0;   // The current image index
-    }
-
-    namespace _instance {
-        VkExtensionProperties available_extensions[256];
-        unsigned int available_extensions_count = 0;
-
-        const char* enabled_extension_names[] = {
-            VK_KHR_SURFACE_EXTENSION_NAME,
-            VK_WSI_SURFACE_EXTENSION_NAME,
-            VK_DEBUG_EXTENSIONS
-        };
-        const unsigned int enabled_extensions_count = sizeof(enabled_extension_names) / sizeof(char*);
-
-        VkLayerProperties available_validation_layers[8];
-        unsigned int available_validation_layers_count = 0;
-
-        const char* enabled_validation_layer_names[] = {
-            VK_VALIDATION_LAYERS
-        };
-        const unsigned int enabled_validation_layers_count = sizeof(enabled_validation_layer_names) / sizeof(char*);
-    }
-
-    namespace _device {
-        namespace requirements {
-            bool discrete_gpu = true;
-            bool graphics = true;
-            bool present = true;
-            bool compute = true;
-            bool transfer = true;
-            bool local_host_visible = true;
-            bool sampler_anisotropy = false;
-        }
-
-        bool present_shares_graphics_queue;
-        bool transfer_shares_graphics_queue;
-
-        VkPhysicalDeviceProperties properties;
-        VkPhysicalDeviceMemoryProperties memory_properties;
-        VkPhysicalDeviceFeatures features;
-
-        VkSurfaceKHR surface;
-        VkSurfaceCapabilitiesKHR surface_capabilities;
-        VkSurfaceFormatKHR surface_formats[VULKAN_MAX_SURFACE_FORMATS];
-        unsigned int surface_format_count = 0;
-
-        VkPresentModeKHR present_modes[VULKAN_MAX_PRESENTATION_MODES];
-        unsigned int present_mode_count = 0;
-
-        VkExtensionProperties available_extensions[256];
-        unsigned int available_extensions_count = 0;
-
-        const char* enabled_extension_names[] = {
-            VK_KHR_SWAPCHAIN_EXTENSION_NAME
-        };
-        const unsigned int enabled_extensions_count = sizeof(enabled_extension_names) / sizeof(char*);
-
-        i32 getMemoryIndex(
-            u32 type_filter, // The memory types to find
-            u32 property_flags // Memory properties that need to exist
-        );
-    }
-
     bool areStringsEqual(const char *src, const char *trg) {
         bool equal = true;
         unsigned int s = 0;
@@ -289,6 +181,34 @@ namespace gpu {
         }
 
         return true;
+    }
+
+    namespace present {
+        VkViewport viewport;
+        VkRect2D scissor;
+        u8 depth_channel_count; // The chosen depth format's number of channels
+        VkFormat depth_format; // The chosen supported depth format
+        VkSurfaceFormatKHR image_format;
+    }
+
+    namespace _instance {
+        VkExtensionProperties available_extensions[256];
+        unsigned int available_extensions_count = 0;
+
+        const char* enabled_extension_names[] = {
+            VK_KHR_SURFACE_EXTENSION_NAME,
+            VK_WSI_SURFACE_EXTENSION_NAME,
+            VK_DEBUG_EXTENSIONS
+        };
+        const unsigned int enabled_extensions_count = sizeof(enabled_extension_names) / sizeof(char*);
+
+        VkLayerProperties available_validation_layers[8];
+        unsigned int available_validation_layers_count = 0;
+
+        const char* enabled_validation_layer_names[] = {
+            VK_VALIDATION_LAYERS
+        };
+        const unsigned int enabled_validation_layers_count = sizeof(enabled_validation_layer_names) / sizeof(char*);
     }
 
     namespace _debug {

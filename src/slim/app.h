@@ -48,7 +48,7 @@ struct SlimApp {
     }
 
     INLINE void _resize(u16 width, u16 height) {
-        gpu::resize(width, height);
+        gpu::present::resize(width, height);
         OnWindowResize(width, height);
         OnWindowRedraw();
     }

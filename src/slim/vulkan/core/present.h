@@ -8,55 +8,87 @@
 
 namespace gpu {
     namespace present {
+        VkSwapchainKHR swapchain;
+        RenderPass render_pass;
+
+        bool vsync = true;
+        bool power_saving = false;
+        u32 framebuffer_width = DEFAULT_WIDTH;
+        u32 framebuffer_height = DEFAULT_HEIGHT;
+        u64 framebuffer_size_generation = 0; // Current generation of framebuffer size. If it does not match framebuffer_size_last_generation, a new one should be generated
+        u64 framebuffer_size_last_generation = 0; // The generation of the framebuffer when it was last created. Set to framebuffer_size_generation when updated
+
+        VkRect2D viewport_rect;
+        VkRect2D scissor_rect;
+
+        VkPresentModeKHR mode;
+
+        // The maximum number of "images in flight" (images simultaneously being rendered to).
+        // Typically one less than the total number of images available.
+        u8 max_frames_in_flight = VULKAN_MAX_SWAPCHAIN_FRAME_COUNT - 1;
+        VkFence in_flight_fences[VULKAN_MAX_SWAPCHAIN_FRAME_COUNT - 1];
+        VkFence images_in_flight[VULKAN_MAX_SWAPCHAIN_FRAME_COUNT];
+
+        VkSemaphore image_available_semaphores[VULKAN_MAX_SWAPCHAIN_FRAME_COUNT - 1];
+        VkSemaphore queue_complete_semaphores[VULKAN_MAX_SWAPCHAIN_FRAME_COUNT - 1];
+
+        unsigned int image_count = 0; // The number of swapchain images
+
+//        texture* render_textures; // An array of render targets, which contain swapchain images
+//        texture* depth_textures; // An array of depth textures, one per frame
+
+        //Render targets used for on-screen rendering, one per frame. The images contained in these are created and owned by the swapchain
+//        render_target render_targets[3];
+//        render_target world_render_targets[VULKAN_MAX_FRAMES_IN_FLIGHTS]; // Render targets used for world rendering. One per frame
+
+//        const unsigned int in_flight_fence_count = VULKAN_MAX_FRAMES_IN_FLIGHTS - 1; // The current number of in-flight fences
+//        VkFence in_flight_fences[VULKAN_MAX_FRAMES_IN_FLIGHTS - 1]; // The in-flight fences, used to indicate to the application when a frame is busy/ready
+
+        u32 current_frame = 0; // The current frame
+        bool recreating_swapchain = false; // Indicates if the swapchain is currently being recreated
+        bool render_flag_changed = false;
+
+        unsigned int current_image_index = 0;   // The current image index
+
         struct SwapchainFrame {
             Image image{};
             Image depth_image{};
             FrameBuffer framebuffer{};
 
-            void regenerateFrameBuffer(u32 width, u32 height);
-            void create(u32 width, u32 height, VkImage image_handle, u32 index);
-            void destroy();
-        };
+            void regenerateFrameBuffer(u32 width, u32 height) {
+                if (framebuffer.handle) framebuffer.destroy();
+                VkImageView image_views[2] = {image.view, depth_image.view};
+                framebuffer.create(width, height, render_pass.handle, image_views, 1);
+            }
 
-        SwapchainFrame swapchain_frames[VULKAN_MAX_SWAPCHAIN_FRAME_COUNT];
-        GraphicsCommandBuffer graphics_command_buffers[VULKAN_MAX_SWAPCHAIN_FRAME_COUNT];
+            void create(u32 width, u32 height, VkImage image_handle, u32 index) {
+                char name[32];
+                char *src = (char*)"swapchain_image_0";
+                char *dst = name;
+                while (*src) *dst++ = *src++;
+                *(--dst) = (char)((u8)'0' + index);
 
-        FrameBuffer *framebuffer = nullptr;
+                image.handle = image_handle;
+                image.width = width;
+                image.height = height;
+                image.name = name;
+                image.createView(VK_IMAGE_VIEW_TYPE_2D, image_format.format, VK_IMAGE_ASPECT_COLOR_BIT);
 
-        void SwapchainFrame::regenerateFrameBuffer(u32 width, u32 height) {
-            if (framebuffer.handle) framebuffer.destroy();
-            VkImageView image_views[2] = {image.view, depth_image.view};
-            framebuffer.create(width, height, main_render_pass.handle, image_views, 1);
-        }
+                src = (char*)"swapchain_depth_image_0";
+                dst = name;
+                while (*src) *dst++ = *src++;
+                *(--dst) = (char)((u8)'0' + index);
 
-        void SwapchainFrame::create(u32 width, u32 height, VkImage image_handle, u32 index) {
-            char name[32];
-            char *src = (char*)"swapchain_image_0";
-            char *dst = name;
-            while (*src) *dst++ = *src++;
-            *(--dst) = (char)((u8)'0' + index);
+                // Create depth image and its view.
+                depth_image.create(VK_IMAGE_VIEW_TYPE_2D, width, height, depth_format,
+                                   VK_IMAGE_TILING_OPTIMAL,
+                                   VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+                                   VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+                                   true,
+                                   VK_IMAGE_ASPECT_DEPTH_BIT,
+                                   name);
 
-            image.handle = image_handle;
-            image.width = width;
-            image.height = height;
-            image.name = name;
-            image.createView(VK_IMAGE_VIEW_TYPE_2D, image_format.format, VK_IMAGE_ASPECT_COLOR_BIT);
-
-            src = (char*)"swapchain_depth_image_0";
-            dst = name;
-            while (*src) *dst++ = *src++;
-            *(--dst) = (char)((u8)'0' + index);
-
-            // Create depth image and its view.
-            depth_image.create(VK_IMAGE_VIEW_TYPE_2D, width, height, depth_format,
-                               VK_IMAGE_TILING_OPTIMAL,
-                               VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
-                               VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-                               true,
-                               VK_IMAGE_ASPECT_DEPTH_BIT,
-                               name);
-
-            regenerateFrameBuffer(width, height);
+                regenerateFrameBuffer(width, height);
 
 //                // Wrap it in a texture.
 //                texture_system_wrap_internal(
@@ -116,13 +148,19 @@ namespace gpu {
 //                    texture_system_resize(&render_textures[i], swapchain_extent.width, swapchain_extent.height, false);
 //                }
 //            }
-        }
+            }
 
-        void SwapchainFrame::destroy() {
-            vkDestroyImageView(device, image.view, nullptr);
-            depth_image.destroy();
-            framebuffer.destroy();
-        }
+            void destroy() {
+                vkDestroyImageView(device, image.view, nullptr);
+                depth_image.destroy();
+                framebuffer.destroy();
+            }
+        };
+
+        SwapchainFrame swapchain_frames[VULKAN_MAX_SWAPCHAIN_FRAME_COUNT];
+        GraphicsCommandBuffer graphics_command_buffers[VULKAN_MAX_SWAPCHAIN_FRAME_COUNT];
+
+        FrameBuffer *framebuffer = nullptr;
 
         void regenerateFrameBuffers(u32 width, u32 height) {
             for (u32 i = 0; i < image_count; ++i)
@@ -137,19 +175,16 @@ namespace gpu {
             // TODO: vsync seems to hold up the game update for some reason.
             // It theoretically should be post-update and pre-render where that happens.
             if (vsync) {
-                present_mode = VK_PRESENT_MODE_FIFO_KHR;
+                mode = VK_PRESENT_MODE_FIFO_KHR;
                 // Only try for mailbox mode if not in power-saving mode.
-                if (!power_saving) {
-                    for (u32 i = 0; i < _device::present_mode_count; ++i) {
-                        VkPresentModeKHR mode = _device::present_modes[i];
-                        if (mode == VK_PRESENT_MODE_MAILBOX_KHR) {
-                            present_mode = mode;
+                if (!power_saving)
+                    for (u32 i = 0; i < _device::present_mode_count; ++i)
+                        if (_device::present_modes[i] == VK_PRESENT_MODE_MAILBOX_KHR) {
+                            mode = _device::present_modes[i];
                             break;
                         }
-                    }
-                }
             } else
-                present_mode = VK_PRESENT_MODE_IMMEDIATE_KHR;
+                mode = VK_PRESENT_MODE_IMMEDIATE_KHR;
 
             // Swapchain extent
             VkExtent2D swapchain_extent = {width, height};
@@ -197,7 +232,7 @@ namespace gpu {
 
             swapchain_create_info.preTransform = _device::surface_capabilities.currentTransform;
             swapchain_create_info.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
-            swapchain_create_info.presentMode = present_mode;
+            swapchain_create_info.presentMode = mode;
             swapchain_create_info.clipped = VK_TRUE;
             swapchain_create_info.oldSwapchain = nullptr;
 
@@ -313,19 +348,48 @@ namespace gpu {
             // Increment (and loop) the index.
             current_frame = (current_frame + 1) % max_frames_in_flight;
         }
-    }
 
-    struct PresentCommandBuffer : CommandBuffer {
-        PresentCommandBuffer(VkCommandBuffer command_buffer_handle = nullptr, VkCommandPool command_pool = nullptr) :
-            CommandBuffer(command_buffer_handle, command_pool, present_queue, present_queue_family_index) {}
-    };
+        struct PresentCommandBuffer : CommandBuffer {
+            PresentCommandBuffer(VkCommandBuffer command_buffer_handle = nullptr, VkCommandPool command_pool = nullptr) :
+                CommandBuffer(command_buffer_handle, command_pool, present_queue, present_queue_family_index) {}
+        };
 
-    struct PresentCommandPool : CommandPool<PresentCommandBuffer> {
-        void create(bool transient = false) {
-            _create(present_queue_family_index, transient);
-            SLIM_LOG_INFO("Present command pool created.")
+        struct PresentCommandPool : CommandPool<PresentCommandBuffer> {
+            void create(bool transient = false) {
+                _create(present_queue_family_index, transient);
+                SLIM_LOG_INFO("Present command pool created.")
+            }
+        };
+
+        PresentCommandPool command_pool;
+
+        void setViewportAndScissorRect(VkRect2D rect) {
+            scissor = rect;
+            viewport.x = (float)rect.offset.x;
+            viewport.y = (float)rect.offset.y;
+            viewport.width = (float)rect.extent.width;
+            viewport.height = (float)rect.extent.height;
+            viewport.minDepth = 0.0f;
+            viewport.maxDepth = 1.0f;
         }
-    };
 
-    PresentCommandPool present_command_pool;
+        void setViewportAndScissor(VkRect2D rect) {
+            setViewportAndScissorRect(rect);
+            graphics_command_buffers[current_image_index].setViewport(&viewport);
+            graphics_command_buffers[current_image_index].setScissor(&rect);
+        }
+
+        void resize(u32 width, u32 height) {
+            framebuffer_width = width;
+            framebuffer_height = height;
+            framebuffer_size_generation++;
+            render_pass.config.rect = {0, 0, width, height};
+            vkDeviceWaitIdle(device);
+            recreateSwapchain();
+            setViewportAndScissorRect({0, 0,
+                                                framebuffer_width,
+                                                framebuffer_height});
+        }
+
+    }
 }
