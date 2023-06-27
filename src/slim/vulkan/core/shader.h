@@ -5,6 +5,12 @@
 #include <shaderc/shaderc.h>
 
 namespace gpu {
+
+
+    CompiledShader CreateCompiledShaderFromSourceString(const char* glsl_source, VkShaderStageFlagBits type, const char* name = "shader", const char* entry_point_name = "main");
+    CompiledShader CreateCompiledShaderFromSourceFile(const char* source_file, VkShaderStageFlagBits type, const char* name = "shader", const char* entry_point_name = "main");
+    CompiledShader CreateCompiledShaderFromBinaryFile(const char* binary_file, VkShaderStageFlagBits type, const char* name = "shader", const char* entry_point_name = "main");
+
     CompiledShader CreateCompiledShaderFromSourceString(const char* glsl_source, VkShaderStageFlagBits type, const char* name, const char* entry_point_name) {
 //                char* s = (char*)source_string;
 //                while (*s++);

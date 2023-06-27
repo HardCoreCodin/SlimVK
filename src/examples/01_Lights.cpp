@@ -8,10 +8,10 @@ struct ExampleVulkanApp : SlimApp {
     GraphicsPipeline graphics_pipeline;
 
     void OnInit() override {
-        vertex_buffer.create(vertex_buffer_size);
-        index_buffer.create(index_buffer_size);
-        vertex_buffer.upload(vertices, vertex_buffer_size);
-        index_buffer.upload(indices, index_buffer_size);
+        vertex_buffer.create(VERTEX_COUNT, sizeof(Vertex));
+        index_buffer.create(INDEX_COUNT, sizeof(u16));
+        vertex_buffer.upload(vertices);
+        index_buffer.upload(indices);
         graphics_pipeline.createFromSourceStrings(vertex_descriptor,
             vertex_shader_source_string,
             fragment_shader_source_string);
@@ -26,7 +26,7 @@ struct ExampleVulkanApp : SlimApp {
                 graphics_command_buffer->bind(graphics_pipeline);
                 graphics_command_buffer->bind(vertex_buffer);
                 graphics_command_buffer->bind(index_buffer);
-                graphics_command_buffer->draw(VERTEX_COUNT);
+                graphics_command_buffer->draw(index_buffer);
             endRenderPass();
     }
 };

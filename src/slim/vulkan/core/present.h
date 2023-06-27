@@ -1,9 +1,28 @@
 #pragma once
 
 #include "./image.h"
+#include "./framebuffer.h"
+#include "./graphics.h"
+#include "./render_pass.h"
+
 
 namespace gpu {
     namespace present {
+        struct SwapchainFrame {
+            Image image{};
+            Image depth_image{};
+            FrameBuffer framebuffer{};
+
+            void regenerateFrameBuffer(u32 width, u32 height);
+            void create(u32 width, u32 height, VkImage image_handle, u32 index);
+            void destroy();
+        };
+
+        SwapchainFrame swapchain_frames[VULKAN_MAX_SWAPCHAIN_FRAME_COUNT];
+        GraphicsCommandBuffer graphics_command_buffers[VULKAN_MAX_SWAPCHAIN_FRAME_COUNT];
+
+        FrameBuffer *framebuffer = nullptr;
+
         void SwapchainFrame::regenerateFrameBuffer(u32 width, u32 height) {
             if (framebuffer.handle) framebuffer.destroy();
             VkImageView image_views[2] = {image.view, depth_image.view};
@@ -162,10 +181,10 @@ namespace gpu {
             swapchain_create_info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 
             // Setup the queue family indices
-            if (graphics_queue_family_index != present::queue_family_index) {
+            if (graphics_queue_family_index != present_queue_family_index) {
                 const unsigned int queueFamilyIndices[] = {
                     graphics_queue_family_index,
-                    present::queue_family_index
+                    present_queue_family_index
                 };
                 swapchain_create_info.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
                 swapchain_create_info.queueFamilyIndexCount = 2;
@@ -230,7 +249,7 @@ namespace gpu {
             // Clear these out just in case.
             for (u32 i = 0; i < image_count; ++i) {
                 images_in_flight[i] = nullptr;
-                graphics_command_pool.allocate(graphics_command_buffers[i],true);
+                graphics_command_pool.allocate(graphics_command_buffers[i], true);
             }
 
             // Mark as recreating if the dimensions are valid.
@@ -282,7 +301,7 @@ namespace gpu {
             present_info.pImageIndices = &present_image_index;
             present_info.pResults = nullptr;
 
-            VkResult result = vkQueuePresentKHR(present::queue, &present_info);
+            VkResult result = vkQueuePresentKHR(present_queue, &present_info);
             if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
                 // Swapchain is out of date, suboptimal or a framebuffer resize has occurred. Trigger swapchain recreation.
                 _recreateSwapchain();
@@ -295,4 +314,18 @@ namespace gpu {
             current_frame = (current_frame + 1) % max_frames_in_flight;
         }
     }
+
+    struct PresentCommandBuffer : CommandBuffer {
+        PresentCommandBuffer(VkCommandBuffer command_buffer_handle = nullptr, VkCommandPool command_pool = nullptr) :
+            CommandBuffer(command_buffer_handle, command_pool, present_queue, present_queue_family_index) {}
+    };
+
+    struct PresentCommandPool : CommandPool<PresentCommandBuffer> {
+        void create(bool transient = false) {
+            _create(present_queue_family_index, transient);
+            SLIM_LOG_INFO("Present command pool created.")
+        }
+    };
+
+    PresentCommandPool present_command_pool;
 }

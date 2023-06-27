@@ -1,8 +1,72 @@
 #pragma once
 
-#include "./base.h"
+#include "./shader.h"
+#include "./render_pass.h"
 
 namespace gpu {
+
+    struct GraphicsPipelineStage {
+        VkShaderModule handle;
+        VkShaderModuleCreateInfo module_create_info;
+        VkPipelineShaderStageCreateInfo create_info;
+
+        void create(const CompiledShader &compiled_shader);
+        void destroy();
+    };
+
+    struct GraphicsPipeline {
+        GraphicsPipelineStage vertex_stage;
+        GraphicsPipelineStage fragment_stage;
+
+        VkPipeline handle;
+        VkPipelineLayout layout;
+
+        bool create(
+            const VertexDescriptor &vertex_descriptor,
+            const CompiledShader &vertex_shader_compiled_binary,
+            const CompiledShader &fragment_shader_compiled_binary,
+            bool is_wireframe = false);
+
+        bool createFromBinaryData(
+            const VertexDescriptor &vertex_descriptor,
+            uint32_t* vertex_shader_binary_data, size_t vertex_shader_data_size,
+            uint32_t* fragment_shader_binary_file, size_t fragment_shader_data_size,
+            const char *vertex_shader_name = "vertex_shader",
+            const char *fragment_shader_name = "fragment_shader",
+            const char *vertex_shader_entry_point_name = "main",
+            const char *fragment_shader_entry_point_name = "main");
+
+        bool createFromBinaryFiles(
+            const VertexDescriptor &vertex_descriptor,
+            const char* vertex_shader_binary_file,
+            const char* fragment_shader_binary_file,
+            const char *vertex_shader_name = "vertex_shader",
+            const char *fragment_shader_name = "fragment_shader",
+            const char *vertex_shader_entry_point_name = "main",
+            const char *fragment_shader_entry_point_name = "main");
+
+        bool createFromSourceFiles(
+            const VertexDescriptor &vertex_descriptor,
+            const char* vertex_shader_source_file,
+            const char* fragment_shader_source_file,
+            const char *vertex_shader_name = "vertex_shader",
+            const char *fragment_shader_name = "fragment_shader",
+            const char *vertex_shader_entry_point_name = "main",
+            const char *fragment_shader_entry_point_name = "main");
+
+        bool createFromSourceStrings(
+            const VertexDescriptor &vertex_descriptor,
+            const char* vertex_shader_source_string,
+            const char* fragment_shader_source_string,
+            const char *vertex_shader_name = "vertex_shader",
+            const char *fragment_shader_name = "fragment_shader",
+            const char *vertex_shader_entry_point_name = "main",
+            const char *fragment_shader_entry_point_name = "main");
+
+        void destroy();
+    };
+
+
     void GraphicsPipelineStage::create(const CompiledShader &compiled_shader) {
         *this = {};
 

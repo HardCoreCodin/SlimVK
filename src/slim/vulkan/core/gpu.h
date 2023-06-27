@@ -7,6 +7,7 @@
 #include "./command.h"
 #include "./graphics.h"
 #include "./transfer.h"
+#include "./compute.h"
 #include "./render_target.h"
 #include "./render_pass.h"
 #include "./shader.h"
@@ -53,6 +54,15 @@ namespace gpu {
             SLIM_LOG_FATAL("Failed to initialize Vulkan device!");
             return false;
         }
+
+        present_command_pool.create();
+        if (_device::present_shares_graphics_queue)
+            graphics_command_pool.handle = present_command_pool.handle;
+        else
+            graphics_command_pool.create();
+
+        transient_graphics_command_pool.create(true);
+        transient_graphics_command_pool.allocate(transient_graphics_command_buffer);
 
         present::framebuffer_width = width;
         present::framebuffer_height = height;
@@ -101,6 +111,7 @@ namespace gpu {
             present::images_in_flight[i] = nullptr;
             graphics_command_pool.allocate(present::graphics_command_buffers[i],true);
         }
+
         SLIM_LOG_DEBUG("Vulkan command buffers created.");
 
         setViewportAndScissorRect({0, 0,
@@ -141,6 +152,14 @@ namespace gpu {
         present::destroySwapchain();
 
         main_render_pass.destroy();
+
+        SLIM_LOG_INFO("Destroying command pools...");
+
+        present_command_pool.destroy();
+        if (!_device::present_shares_graphics_queue)
+            graphics_command_pool.destroy();
+
+        transient_graphics_command_pool.destroy();
 
         SLIM_LOG_DEBUG("Destroying Vulkan device...");
         _device::destroy();

@@ -50,6 +50,17 @@ namespace gpu {
     VkPhysicalDevice physical_device;
     VkDevice device;
 
+
+    VkQueue transfer_queue;
+    VkQueue graphics_queue;
+    VkQueue compute_queue;
+    VkQueue present_queue;
+
+    unsigned int graphics_queue_family_index;
+    unsigned int compute_queue_family_index;
+    unsigned int transfer_queue_family_index;
+    unsigned int present_queue_family_index;
+
     enum VertexAttributeFormat {
         F32,
         F32x2,
@@ -94,50 +105,6 @@ namespace gpu {
         Storage
     };
 
-    struct Buffer {
-        BufferType type;
-
-        VkBuffer handle;
-        VkBufferUsageFlagBits usage;
-        bool is_locked;
-        VkDeviceMemory memory;
-        VkMemoryRequirements memory_requirements;
-        i32 memory_index;
-        u32 memory_property_flags;
-
-        u64 total_size;
-        u64 freelist_memory_requirement;
-
-        INLINE bool isDeviceLocal() const { return (memory_property_flags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) == VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT; }
-        INLINE bool isHostVisible() const { return (memory_property_flags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) == VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT; }
-        INLINE bool isHostCoherent() const { return (memory_property_flags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) == VK_MEMORY_PROPERTY_HOST_COHERENT_BIT; }
-
-        bool create(BufferType buffer_type, u64 size);
-        void destroy();
-        bool resize(u64 new_size);
-        bool flush(u64 size = 0, u64 offset = 0) const;
-        bool download(void** to, u64 size = 0, u64 from_offset = 0);
-        bool upload(const void* from, u64 size = 0, u64 to_offset = 0);
-        bool copyTo(const Buffer &to_buffer, u64 size = 0, u64 from_offset = 0, u64 to_offset = 0) const;
-
-    protected:
-        void* data(u64 size, u64 offset = 0) const;
-        void read(void* to, u64 size, u64 from_offset = 0) const;
-        void write(const void* from, u64 size, u64 to_offset = 0);
-    };
-
-    struct VertexBuffer : Buffer { bool create(u64 size) { *this = {}; return Buffer::create(BufferType::Vertex, size); } };
-    struct IndexBuffer : Buffer {
-        VkIndexType index_type = VK_INDEX_TYPE_UINT32;
-
-        bool create(u64 size, VkIndexType type = VK_INDEX_TYPE_UINT32) {
-            *this = {};
-            bool result = Buffer::create(BufferType::Index, size);
-            index_type = type;
-            return result;
-        }
-    };
-
     enum class State {
         Ready,
         Recording,
@@ -145,22 +112,6 @@ namespace gpu {
         Recorded,
         Submitted,
         UnAllocated
-    };
-
-    struct Image {
-        VkImage handle;
-        VkDeviceMemory memory;
-        VkImageView view;
-        VkMemoryRequirements memory_requirements;
-        VkMemoryPropertyFlags memory_flags;
-        u32 width;
-        u32 height;
-        char* name;
-        VkImageViewType type;
-
-        void create(VkImageViewType type, u32 width, u32 height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags memory_flags, bool create_view, VkImageAspectFlags view_aspect_flags, const char* name);
-        void createView(VkImageViewType type, VkFormat format, VkImageAspectFlags aspect_flags);
-        void destroy();
     };
 
     struct Attachment {
@@ -187,142 +138,6 @@ namespace gpu {
         struct texture* texture;
     };
 
-    struct FrameBuffer {
-        VkFramebuffer handle;
-
-        void create(u32 width, u32 height, VkRenderPass render_pass_handle, VkImageView *image_views, unsigned int image_views_count) {
-            VkFramebufferCreateInfo framebuffer_create_info = {VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO};
-            framebuffer_create_info.renderPass = render_pass_handle;
-            framebuffer_create_info.attachmentCount = image_views_count;
-            framebuffer_create_info.pAttachments = image_views;
-            framebuffer_create_info.width = width;
-            framebuffer_create_info.height = height;
-            framebuffer_create_info.layers = 1;
-
-            VK_CHECK(vkCreateFramebuffer(device, &framebuffer_create_info, nullptr, &handle))
-        }
-
-        void destroy() {
-            if (handle == nullptr) return;
-            vkDestroyFramebuffer(device, handle, nullptr);
-            handle = nullptr;
-        }
-    };
-
-    struct RenderTarget {
-        Attachment::Config attachment_configs[4];
-        Attachment *attachments;
-        FrameBuffer *framebuffer;
-        u8 attachment_count;
-    };
-
-    struct RenderPass {
-        struct Config {
-            const char* name;
-            VkRect2D rect;
-            Color clear_color;
-            f32 depth;
-            u32 stencil;
-            u8 attachment_count;
-            Attachment::Config attachment_configs[4];
-        };
-
-        VkRenderPass handle;
-        Config config;
-        State state;
-        u16 id;
-//        u8 render_target_count;
-//        RenderTarget* render_targets;
-
-        bool create(const Config &config);
-        void destroy();
-    };
-
-    RenderPass main_render_pass;
-
-
-    struct Fence {
-        VkFence handle = nullptr;
-        bool is_signaled = true;
-
-        void create() {
-            destroy();
-
-            // Create the fence in a signaled state, indicating that the first frame has already been "rendered".
-            // This will prevent the application from waiting indefinitely for the first frame to render since it
-            // cannot be rendered until a frame is "rendered" before it.
-            VkFenceCreateInfo fence_create_info = {VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
-            fence_create_info.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-            VK_CHECK(vkCreateFence(device, &fence_create_info, nullptr, &handle))
-        }
-
-        void destroy() {
-            if (handle) vkDestroyFence(device, handle, nullptr);
-            handle = nullptr;
-        }
-    };
-
-    struct CommandBuffer {
-        VkCommandBuffer handle;
-
-    protected:
-        const VkCommandPool pool;
-        const VkQueue queue;
-        const unsigned int queue_family_index;
-
-    public:
-        State state = State::Ready;
-
-        explicit CommandBuffer(VkCommandBuffer buffer = nullptr, VkCommandPool pool = nullptr, VkQueue queue = nullptr, unsigned int queue_family_index = 0) : handle{buffer}, pool{pool}, queue{queue}, queue_family_index{queue_family_index} {}
-        void begin(bool is_single_use, bool is_renderpass_continue, bool is_simultaneous_use);
-        void end();
-        void beginSingleUse();
-        void endSingleUse();
-        void reset();
-        void free();
-        void transitionImageLayout(Image &image, VkFormat format, VkImageLayout old_layout, VkImageLayout new_layout);
-        void setViewport(VkViewport *viewport);
-        void setScissor(VkRect2D *scissor);
-    };
-
-    template <typename CommandBufferType>
-    struct CommandPool {
-        VkCommandPool handle;
-
-        void free(CommandBufferType &command_buffer) {
-            vkFreeCommandBuffers(device, handle,1, &command_buffer.handle);
-            command_buffer.handle = 0;
-            command_buffer.state = State::UnAllocated;
-        }
-
-        void destroy() {
-            vkDestroyCommandPool(device, handle, nullptr);
-        }
-
-        void allocate(CommandBufferType &command_buffer, bool is_primary) {
-            if (command_buffer.handle) command_buffer.free();
-
-            VkCommandBufferAllocateInfo allocate_info = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
-            allocate_info.commandPool = handle;
-            allocate_info.level = is_primary ? VK_COMMAND_BUFFER_LEVEL_PRIMARY : VK_COMMAND_BUFFER_LEVEL_SECONDARY;
-            allocate_info.commandBufferCount = 1;
-
-            VkCommandBuffer command_buffer_handle;
-            VK_CHECK(vkAllocateCommandBuffers(device, &allocate_info, &command_buffer_handle))
-            new(&command_buffer)CommandBufferType(command_buffer_handle, handle);
-            command_buffer.reset();
-        }
-
-    protected:
-        void _create(unsigned int queue_family_index) {
-            // Create command pool for graphics queue.
-            VkCommandPoolCreateInfo pool_create_info = {VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};
-            pool_create_info.queueFamilyIndex = queue_family_index;
-            pool_create_info.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-            VK_CHECK(vkCreateCommandPool(device, &pool_create_info, nullptr, &handle))
-        }
-    };
-
     struct CompiledShader {
         VkShaderStageFlagBits type;
         const char* name;
@@ -331,154 +146,10 @@ namespace gpu {
         u64 size;
     };
 
-    CompiledShader CreateCompiledShaderFromSourceString(const char* glsl_source, VkShaderStageFlagBits type, const char* name = "shader", const char* entry_point_name = "main");
-    CompiledShader CreateCompiledShaderFromSourceFile(const char* source_file, VkShaderStageFlagBits type, const char* name = "shader", const char* entry_point_name = "main");
-    CompiledShader CreateCompiledShaderFromBinaryFile(const char* binary_file, VkShaderStageFlagBits type, const char* name = "shader", const char* entry_point_name = "main");
-
-    struct GraphicsPipelineStage {
-        VkShaderModule handle;
-        VkShaderModuleCreateInfo module_create_info;
-        VkPipelineShaderStageCreateInfo create_info;
-
-        void create(const CompiledShader &compiled_shader);
-        void destroy();
-    };
-
-    struct GraphicsPipeline {
-        GraphicsPipelineStage vertex_stage;
-        GraphicsPipelineStage fragment_stage;
-
-        VkPipeline handle;
-        VkPipelineLayout layout;
-
-        bool create(
-            const VertexDescriptor &vertex_descriptor,
-            const CompiledShader &vertex_shader_compiled_binary,
-            const CompiledShader &fragment_shader_compiled_binary,
-            bool is_wireframe = false);
-
-        bool createFromBinaryData(
-            const VertexDescriptor &vertex_descriptor,
-            uint32_t* vertex_shader_binary_data, size_t vertex_shader_data_size,
-            uint32_t* fragment_shader_binary_file, size_t fragment_shader_data_size,
-            const char *vertex_shader_name = "vertex_shader",
-            const char *fragment_shader_name = "fragment_shader",
-            const char *vertex_shader_entry_point_name = "main",
-            const char *fragment_shader_entry_point_name = "main");
-
-        bool createFromBinaryFiles(
-            const VertexDescriptor &vertex_descriptor,
-            const char* vertex_shader_binary_file,
-            const char* fragment_shader_binary_file,
-            const char *vertex_shader_name = "vertex_shader",
-            const char *fragment_shader_name = "fragment_shader",
-            const char *vertex_shader_entry_point_name = "main",
-            const char *fragment_shader_entry_point_name = "main");
-
-        bool createFromSourceFiles(
-            const VertexDescriptor &vertex_descriptor,
-            const char* vertex_shader_source_file,
-            const char* fragment_shader_source_file,
-            const char *vertex_shader_name = "vertex_shader",
-            const char *fragment_shader_name = "fragment_shader",
-            const char *vertex_shader_entry_point_name = "main",
-            const char *fragment_shader_entry_point_name = "main");
-
-        bool createFromSourceStrings(
-            const VertexDescriptor &vertex_descriptor,
-            const char* vertex_shader_source_string,
-            const char* fragment_shader_source_string,
-            const char *vertex_shader_name = "vertex_shader",
-            const char *fragment_shader_name = "fragment_shader",
-            const char *vertex_shader_entry_point_name = "main",
-            const char *fragment_shader_entry_point_name = "main");
-
-        void destroy();
-    };
-
-    VkQueue graphics_queue;
-    unsigned int graphics_queue_family_index;
-
-    struct GraphicsCommandBuffer : CommandBuffer {
-        GraphicsCommandBuffer(VkCommandBuffer command_buffer_handle = nullptr, VkCommandPool command_pool = nullptr) :
-            CommandBuffer(command_buffer_handle, command_pool, graphics_queue, graphics_queue_family_index) {}
-
-        bool beginRenderPass(RenderPass &renderpass, VkFramebuffer framebuffer); //, RenderTarget &render_target);
-        bool endRenderPass();
-        void bind(const GraphicsPipeline &graphics_pipeline) const;
-        void bind(const VertexBuffer &vertex_buffer, u32 offset = 0) const;
-        void bind(const IndexBuffer &vertex_buffer, u32 offset = 0) const;
-        void draw(u32 vertex_count, u32 instance_count = 1, u32 first_vertex = 0, u32 first_instance = 0) const;
-    };
-
-    struct GraphicsCommandPool : CommandPool<GraphicsCommandBuffer> {
-        void create() {
-            _create(graphics_queue_family_index);
-            SLIM_LOG_INFO("Graphics command pool created.")
-        }
-    };
-
-    GraphicsCommandBuffer *graphics_command_buffer = nullptr;
-    GraphicsCommandPool graphics_command_pool;
-
-    VkQueue transfer_queue;
-    unsigned int transfer_queue_family_index;
-
-    struct TransferCommandBuffer : CommandBuffer {
-        TransferCommandBuffer(VkCommandBuffer command_buffer_handle = nullptr, VkCommandPool command_pool = nullptr) :
-            CommandBuffer(command_buffer_handle, command_pool, transfer_queue, transfer_queue_family_index) {}
-
-        void copyBufferToImage(VkBuffer buffer, Image &image);
-        void copyImageToBuffer(Image &image, VkBuffer buffer);
-        void copyPixelToBuffer(Image &image,  u32 x, u32 y, VkBuffer buffer);
-    };
-
-    struct TransferCommandPool : CommandPool<TransferCommandBuffer> {
-        void create() {
-            _create(transfer_queue_family_index);
-            SLIM_LOG_INFO("Transfer command pool created.")
-        }
-    };
-
-    TransferCommandPool transfer_command_pool;
-
-    VkQueue compute_queue;
-    unsigned int compute_queue_family_index;
-
-    struct ComputeCommandBuffer : CommandBuffer {
-        ComputeCommandBuffer(VkCommandBuffer command_buffer_handle = nullptr, VkCommandPool command_pool = nullptr) :
-            CommandBuffer(command_buffer_handle, command_pool, compute_queue, compute_queue_family_index) {}
-    };
-
-    struct ComputeCommandPool : CommandPool<ComputeCommandBuffer> {
-        void create() {
-            _create(compute_queue_family_index);
-            SLIM_LOG_INFO("Compute command pool created.")
-        }
-    };
-
-    ComputeCommandPool compute_command_pool;
-
     namespace present {
         VkViewport main_viewport;
         VkRect2D main_scissor;
         VkSwapchainKHR swapchain;
-        VkQueue queue;
-        unsigned int queue_family_index;
-
-        struct PresentCommandBuffer : CommandBuffer {
-            PresentCommandBuffer(VkCommandBuffer command_buffer_handle = nullptr, VkCommandPool command_pool = nullptr) :
-                CommandBuffer(command_buffer_handle, command_pool, present::queue, present::queue_family_index) {}
-        };
-
-        struct PresentCommandPool : CommandPool<PresentCommandBuffer> {
-            void create() {
-                _create(queue_family_index);
-                SLIM_LOG_INFO("Present command pool created.")
-            }
-        };
-
-        PresentCommandPool command_pool;
 
         bool vsync = true;
         bool power_saving = false;
@@ -521,21 +192,6 @@ namespace gpu {
         bool render_flag_changed = false;
 
         unsigned int current_image_index = 0;   // The current image index
-
-        struct SwapchainFrame {
-            Image image{};
-            Image depth_image{};
-            FrameBuffer framebuffer{};
-
-            void regenerateFrameBuffer(u32 width, u32 height);
-            void create(u32 width, u32 height, VkImage image_handle, u32 index);
-            void destroy();
-        };
-
-        SwapchainFrame swapchain_frames[VULKAN_MAX_SWAPCHAIN_FRAME_COUNT];
-        GraphicsCommandBuffer graphics_command_buffers[VULKAN_MAX_SWAPCHAIN_FRAME_COUNT];
-
-        FrameBuffer *framebuffer = nullptr;
     }
 
     namespace _instance {

@@ -3,8 +3,9 @@
 #include "../slim/vulkan/core/gpu.h"
 using namespace gpu;
 
-#define VERTEX_COUNT 3
 #define TRIANGLE_COUNT 1
+#define VERTEX_COUNT 3
+#define INDEX_COUNT (TRIANGLE_COUNT * 3)
 
 struct Vertex { vec3 position{}; Color color; };
 Vertex vertices[VERTEX_COUNT] = {
@@ -12,9 +13,7 @@ Vertex vertices[VERTEX_COUNT] = {
     {{0.5, 0.5, 0}, ColorID::Green},
     {{0, 0.5, 0}, ColorID::Blue}
 };
-u32 indices[3 * TRIANGLE_COUNT] = {0, 1, 2};
-u32 index_buffer_size = sizeof(u32) * 3 * TRIANGLE_COUNT;
-u32 vertex_buffer_size = sizeof(Vertex) * VERTEX_COUNT;
+u16 indices[3 * TRIANGLE_COUNT] = {0, 1, 2};
 VertexDescriptor vertex_descriptor{
     sizeof(Vertex), 2,
     {{F32x3, sizeof(vec3)},

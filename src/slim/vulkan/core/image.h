@@ -3,6 +3,24 @@
 #include "./base.h"
 
 namespace gpu {
+
+
+    struct Image {
+        VkImage handle;
+        VkDeviceMemory memory;
+        VkImageView view;
+        VkMemoryRequirements memory_requirements;
+        VkMemoryPropertyFlags memory_flags;
+        u32 width;
+        u32 height;
+        char* name;
+        VkImageViewType type;
+
+        void create(VkImageViewType type, u32 width, u32 height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags memory_flags, bool create_view, VkImageAspectFlags view_aspect_flags, const char* name);
+        void createView(VkImageViewType type, VkFormat format, VkImageAspectFlags aspect_flags);
+        void destroy();
+    };
+
     void Image::create(VkImageViewType view_type, u32 image_width, u32 image_height, VkFormat format, VkImageTiling tiling,
                             VkImageUsageFlags usage, VkMemoryPropertyFlags image_memory_flags, bool create_view,
                             VkImageAspectFlags view_aspect_flags, const char* image_name) {
