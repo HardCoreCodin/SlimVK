@@ -5,6 +5,7 @@
 namespace gpu {
     struct FrameBuffer {
         VkFramebuffer handle;
+        VkExtent2D extent;
 
         void create(u32 width, u32 height, VkRenderPass render_pass_handle, VkImageView *image_views, unsigned int image_views_count) {
             VkFramebufferCreateInfo framebuffer_create_info = {VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO};
@@ -14,6 +15,8 @@ namespace gpu {
             framebuffer_create_info.width = width;
             framebuffer_create_info.height = height;
             framebuffer_create_info.layers = 1;
+            extent.width = width;
+            extent.height = height;
 
             VK_CHECK(vkCreateFramebuffer(device, &framebuffer_create_info, nullptr, &handle))
         }

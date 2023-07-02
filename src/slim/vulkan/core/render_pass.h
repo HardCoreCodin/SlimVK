@@ -6,7 +6,6 @@ namespace gpu {
     struct RenderPass {
         struct Config {
             const char* name;
-            VkRect2D rect;
             Color clear_color;
             f32 depth;
             u32 stencil;

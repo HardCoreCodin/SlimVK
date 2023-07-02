@@ -86,6 +86,22 @@ namespace gpu {
 
         return compiled_shader;
     }
+
+//    struct Vertex {
+//        vec2 pos;
+//        vec3 color;
+//    };
+//
+//    static VkVertexInputBindingDescription VertexBindingDescription{0, sizeof(Vertex), VK_VERTEX_INPUT_RATE_VERTEX };
+//    static VkVertexInputAttributeDescription VertexAttributeDescriptions[2]{
+//        { 0, 0, VK_FORMAT_R32G32_SFLOAT,  (u32)(offsetof(Vertex, pos)) },
+//        {0, 1, VK_FORMAT_R32G32B32_SFLOAT, (u32)(offsetof(Vertex, color))}
+//    };
+//    VkDescriptorSetLayout descriptorSetLayout;
+//    VkDescriptorPool descriptorPool;
+//    VkDescriptorSet descriptorSets[VULKAN_MAX_FRAMES_IN_FLIGHT];
+
+
 }
 
 

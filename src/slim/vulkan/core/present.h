@@ -13,24 +13,22 @@ namespace gpu {
 
         bool vsync = true;
         bool power_saving = false;
-        u32 framebuffer_width = DEFAULT_WIDTH;
-        u32 framebuffer_height = DEFAULT_HEIGHT;
+
+        VkRect2D swapchain_rect{{}, {DEFAULT_WIDTH, DEFAULT_HEIGHT}};
+
         u64 framebuffer_size_generation = 0; // Current generation of framebuffer size. If it does not match framebuffer_size_last_generation, a new one should be generated
         u64 framebuffer_size_last_generation = 0; // The generation of the framebuffer when it was last created. Set to framebuffer_size_generation when updated
-
-        VkRect2D viewport_rect;
-        VkRect2D scissor_rect;
 
         VkPresentModeKHR mode;
 
         // The maximum number of "images in flight" (images simultaneously being rendered to).
         // Typically one less than the total number of images available.
-        u8 max_frames_in_flight = VULKAN_MAX_SWAPCHAIN_FRAME_COUNT - 1;
-        VkFence in_flight_fences[VULKAN_MAX_SWAPCHAIN_FRAME_COUNT - 1];
+        u8 max_frames_in_flight = VULKAN_MAX_FRAMES_IN_FLIGHT;
+        VkFence in_flight_fences[VULKAN_MAX_FRAMES_IN_FLIGHT];
         VkFence images_in_flight[VULKAN_MAX_SWAPCHAIN_FRAME_COUNT];
 
-        VkSemaphore image_available_semaphores[VULKAN_MAX_SWAPCHAIN_FRAME_COUNT - 1];
-        VkSemaphore queue_complete_semaphores[VULKAN_MAX_SWAPCHAIN_FRAME_COUNT - 1];
+        VkSemaphore image_available_semaphores[VULKAN_MAX_FRAMES_IN_FLIGHT];
+        VkSemaphore render_complete_semaphores[VULKAN_MAX_FRAMES_IN_FLIGHT];
 
         unsigned int image_count = 0; // The number of swapchain images
 
@@ -44,7 +42,7 @@ namespace gpu {
 //        const unsigned int in_flight_fence_count = VULKAN_MAX_FRAMES_IN_FLIGHTS - 1; // The current number of in-flight fences
 //        VkFence in_flight_fences[VULKAN_MAX_FRAMES_IN_FLIGHTS - 1]; // The in-flight fences, used to indicate to the application when a frame is busy/ready
 
-        u32 current_frame = 0; // The current frame
+        u32 current_frame = 0;
         bool recreating_swapchain = false; // Indicates if the swapchain is currently being recreated
         bool render_flag_changed = false;
 
@@ -52,12 +50,12 @@ namespace gpu {
 
         struct SwapchainFrame {
             Image image{};
-            Image depth_image{};
+//            Image depth_image{};
             FrameBuffer framebuffer{};
 
             void regenerateFrameBuffer(u32 width, u32 height) {
-                if (framebuffer.handle) framebuffer.destroy();
-                VkImageView image_views[2] = {image.view, depth_image.view};
+                framebuffer.destroy();
+                VkImageView image_views[1] = {image.view};//, depth_image.view};
                 framebuffer.create(width, height, render_pass.handle, image_views, 1);
             }
 
@@ -74,19 +72,19 @@ namespace gpu {
                 image.name = name;
                 image.createView(VK_IMAGE_VIEW_TYPE_2D, image_format.format, VK_IMAGE_ASPECT_COLOR_BIT);
 
-                src = (char*)"swapchain_depth_image_0";
-                dst = name;
-                while (*src) *dst++ = *src++;
-                *(--dst) = (char)((u8)'0' + index);
+//                src = (char*)"swapchain_depth_image_0";
+//                dst = name;
+//                while (*src) *dst++ = *src++;
+//                *(--dst) = (char)((u8)'0' + index);
 
                 // Create depth image and its view.
-                depth_image.create(VK_IMAGE_VIEW_TYPE_2D, width, height, depth_format,
-                                   VK_IMAGE_TILING_OPTIMAL,
-                                   VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
-                                   VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-                                   true,
-                                   VK_IMAGE_ASPECT_DEPTH_BIT,
-                                   name);
+//                depth_image.create(VK_IMAGE_VIEW_TYPE_2D, width, height, depth_format,
+//                                   VK_IMAGE_TILING_OPTIMAL,
+//                                   VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+//                                   VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+//                                   true,
+//                                   VK_IMAGE_ASPECT_DEPTH_BIT,
+//                                   name);
 
                 regenerateFrameBuffer(width, height);
 
@@ -152,20 +150,18 @@ namespace gpu {
 
             void destroy() {
                 vkDestroyImageView(device, image.view, nullptr);
-                depth_image.destroy();
+//                depth_image.destroy();
                 framebuffer.destroy();
             }
         };
 
         SwapchainFrame swapchain_frames[VULKAN_MAX_SWAPCHAIN_FRAME_COUNT];
-        GraphicsCommandBuffer graphics_command_buffers[VULKAN_MAX_SWAPCHAIN_FRAME_COUNT];
+        GraphicsCommandBuffer _graphics_command_buffers[VULKAN_MAX_FRAMES_IN_FLIGHT];
 
-        FrameBuffer *framebuffer = nullptr;
-
-        void regenerateFrameBuffers(u32 width, u32 height) {
-            for (u32 i = 0; i < image_count; ++i)
-                swapchain_frames[i].regenerateFrameBuffer(width, height);
-        }
+//        void regenerateFrameBuffers(u32 width, u32 height) {
+//            for (u32 i = 0; i < image_count; ++i)
+//                swapchain_frames[i].regenerateFrameBuffer(width, height);
+//        }
 
         void createSwapchain(u32 width, u32 height, bool turn_vsync_on, bool turn_power_saving_on) {
             vsync = turn_vsync_on;
@@ -187,15 +183,15 @@ namespace gpu {
                 mode = VK_PRESENT_MODE_IMMEDIATE_KHR;
 
             // Swapchain extent
-            VkExtent2D swapchain_extent = {width, height};
+            swapchain_rect = {{}, {width, height}};
             if (_device::surface_capabilities.currentExtent.width != UINT32_MAX)
-                swapchain_extent = _device::surface_capabilities.currentExtent;
+                swapchain_rect.extent = _device::surface_capabilities.currentExtent;
 
             // Clamp to the value allowed by the GPU.
             VkExtent2D min = _device::surface_capabilities.minImageExtent;
             VkExtent2D max = _device::surface_capabilities.maxImageExtent;
-            swapchain_extent.width = clampedValue(swapchain_extent.width, min.width, max.width);
-            swapchain_extent.height = clampedValue(swapchain_extent.height, min.height, max.height);
+            swapchain_rect.extent.width = clampedValue(swapchain_rect.extent.width, min.width, max.width);
+            swapchain_rect.extent.height = clampedValue(swapchain_rect.extent.height, min.height, max.height);
 
             unsigned int min_image_count = _device::surface_capabilities.minImageCount + 1;
             if (_device::surface_capabilities.maxImageCount > 0 &&
@@ -211,7 +207,7 @@ namespace gpu {
             swapchain_create_info.minImageCount = min_image_count;
             swapchain_create_info.imageFormat = image_format.format;
             swapchain_create_info.imageColorSpace = image_format.colorSpace;
-            swapchain_create_info.imageExtent = swapchain_extent;
+            swapchain_create_info.imageExtent = swapchain_rect.extent;
             swapchain_create_info.imageArrayLayers = 1;
             swapchain_create_info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 
@@ -249,7 +245,7 @@ namespace gpu {
             VK_CHECK(vkGetSwapchainImagesKHR(device, swapchain, &image_count, swapchain_images));
 
             for (u32 i = 0; i < image_count; ++i)
-                swapchain_frames[i].create(swapchain_extent.width,  swapchain_extent.height, swapchain_images[i], i);
+                swapchain_frames[i].create(swapchain_rect.extent.width,  swapchain_rect.extent.height, swapchain_images[i], i);
 
             SLIM_LOG_INFO("Swap chain created");
         }
@@ -263,11 +259,6 @@ namespace gpu {
             vkDestroySwapchainKHR(device, swapchain, nullptr);
         }
 
-        void _recreateSwapchain() {
-            destroySwapchain();
-            createSwapchain(framebuffer_width, framebuffer_height, vsync, power_saving);
-        }
-
         bool recreateSwapchain() {
             // If already being recreated, do not try again.
             if (recreating_swapchain) {
@@ -275,16 +266,16 @@ namespace gpu {
                 return false;
             }
 
-            // Detect if the window is too small to be drawn to
-            if (framebuffer_width == 0 || framebuffer_height == 0) {
-                SLIM_LOG_DEBUG("recreate_swapchain called when window is < 1 in a dimension. Booting.");
-                return false;
-            }
+//            // Detect if the window is too small to be drawn to
+//            if (framebuffer_width == 0 || framebuffer_height == 0) {
+//                SLIM_LOG_DEBUG("recreate_swapchain called when window is < 1 in a dimension. Booting.");
+//                return false;
+//            }
 
             // Clear these out just in case.
             for (u32 i = 0; i < image_count; ++i) {
                 images_in_flight[i] = nullptr;
-                graphics_command_pool.allocate(graphics_command_buffers[i], true);
+//                graphics_command_pool.allocate(graphics_command_buffers[i], true);
             }
 
             // Mark as recreating if the dimensions are valid.
@@ -297,7 +288,8 @@ namespace gpu {
             _device::querySupportForSurfaceFormatsAndPresentModes();
             _device::querySupportForDepthFormats();
 
-            _recreateSwapchain();
+            destroySwapchain();
+            createSwapchain(swapchain_rect.extent.width, swapchain_rect.extent.height, vsync, power_saving);
 
             // Update framebuffer size generation.
             framebuffer_size_last_generation = framebuffer_size_generation;
@@ -316,7 +308,7 @@ namespace gpu {
             VkResult result = vkAcquireNextImageKHR(device, swapchain, timeout_ns, image_available_semaphore, fence, out_image_index);
             if (result == VK_ERROR_OUT_OF_DATE_KHR) {
                 // Trigger swapchain recreation, then boot out of the render loop.
-                _recreateSwapchain();
+                recreateSwapchain();
                 return false;
             } else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
                 SLIM_LOG_FATAL("Failed to acquire swapchain image!");
@@ -339,7 +331,7 @@ namespace gpu {
             VkResult result = vkQueuePresentKHR(present_queue, &present_info);
             if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
                 // Swapchain is out of date, suboptimal or a framebuffer resize has occurred. Trigger swapchain recreation.
-                _recreateSwapchain();
+                recreateSwapchain();
                 SLIM_LOG_DEBUG("Swapchain recreated because swapchain returned out of date or suboptimal.");
             } else if (result != VK_SUCCESS) {
                 SLIM_LOG_FATAL("Failed to present swap chain image!");
@@ -363,32 +355,12 @@ namespace gpu {
 
         PresentCommandPool command_pool;
 
-        void setViewportAndScissorRect(VkRect2D rect) {
-            scissor = rect;
-            viewport.x = (float)rect.offset.x;
-            viewport.y = (float)rect.offset.y;
-            viewport.width = (float)rect.extent.width;
-            viewport.height = (float)rect.extent.height;
-            viewport.minDepth = 0.0f;
-            viewport.maxDepth = 1.0f;
-        }
-
-        void setViewportAndScissor(VkRect2D rect) {
-            setViewportAndScissorRect(rect);
-            graphics_command_buffers[current_image_index].setViewport(&viewport);
-            graphics_command_buffers[current_image_index].setScissor(&rect);
-        }
-
         void resize(u32 width, u32 height) {
-            framebuffer_width = width;
-            framebuffer_height = height;
+            swapchain_rect.extent.width = width;
+            swapchain_rect.extent.height = height;
             framebuffer_size_generation++;
-            render_pass.config.rect = {0, 0, width, height};
-            vkDeviceWaitIdle(device);
+//            vkDeviceWaitIdle(device);
             recreateSwapchain();
-            setViewportAndScissorRect({0, 0,
-                                                framebuffer_width,
-                                                framebuffer_height});
         }
 
     }

@@ -6,7 +6,7 @@
 struct SlimApp {
     timers::Timer update_timer, render_timer;
     bool is_running{true};
-    bool is_minimized{true};
+    bool is_minimized{false};
     bool blit{false};
     bool suspend_when_minimized{true};
 
@@ -23,18 +23,25 @@ struct SlimApp {
     virtual void OnMousePositionSet(i32 x, i32 y) {};
     virtual void OnMouseMovementSet(i32 x, i32 y) {};
     virtual void OnMouseRawMovementSet(i32 x, i32 y) {};
-    virtual void OnRender() {};
+    virtual void OnRenderMainPass(GraphicsCommandBuffer &command_buffer) {};
+    virtual void OnRender() {
+        gpu::beginRenderPass();
+        OnRenderMainPass(*gpu::graphics_command_buffer);
+        gpu::endRenderPass();
+    };
+    virtual void OnConfigureMainRenderPass(gpu::RenderPass &main_render_pass) {};
     virtual void OnUpdate(f32 delta_time) {};
     virtual void OnWindowRedraw() {
         update_timer.beginFrame();
         OnUpdate(update_timer.delta_time);
         update_timer.endFrame();
 
-        gpu::beginFrame();
-        render_timer.beginFrame();
-        OnRender();
-        render_timer.endFrame();
-        gpu::endFrame();
+        if (gpu::beginFrame()) {
+            render_timer.beginFrame();
+            OnRender();
+            render_timer.endFrame();
+            gpu::endFrame();
+        }
     };
 
     INLINE void _minimize() {

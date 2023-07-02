@@ -308,7 +308,7 @@ namespace gpu {
 
     template <typename CommandBufferType>
     struct CommandPool {
-        VkCommandPool handle;
+        VkCommandPool handle = nullptr;
 
         void free(CommandBufferType &command_buffer) {
             vkFreeCommandBuffers(device, handle,1, &command_buffer.handle);

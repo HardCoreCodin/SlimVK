@@ -30,19 +30,37 @@
 #endif
 
 #define VULKAN_MAX_SWAPCHAIN_FRAME_COUNT 3
+#define VULKAN_MAX_FRAMES_IN_FLIGHT (VULKAN_MAX_SWAPCHAIN_FRAME_COUNT - 1)
 #define VULKAN_MAX_PRESENTATION_MODES 8
 #define VULKAN_MAX_SURFACE_FORMATS 512
 #define VULKAN_MAX_MATERIAL_COUNT 1024
 #define VULKAN_MAX_GEOMETRY_COUNT 4096
-#define VULKAN_MAX_UI_COUNT 1024
-#define VULKAN_SHADER_MAX_STAGES 8
-#define VULKAN_SHADER_MAX_GLOBAL_TEXTURES 31
-#define VULKAN_SHADER_MAX_INSTANCE_TEXTURES 31
-#define VULKAN_SHADER_MAX_ATTRIBUTES 16
-#define VULKAN_SHADER_MAX_UNIFORMS 128
-#define VULKAN_SHADER_MAX_BINDINGS 2
-#define VULKAN_SHADER_MAX_PUSH_CONST_RANGES 32
+
+//#define VULKAN_MAX_UI_COUNT 1024
+
 #define TEXTURE_NAME_MAX_LENGTH 512
+
+// The maximum number of stages allowed (such as vertex, fragment, compute, etc.)
+#define VULKAN_SHADER_MAX_STAGES 8
+
+// The maximum number of textures allowed at the global level
+#define VULKAN_SHADER_MAX_GLOBAL_TEXTURES 31
+
+// The maximum number of textures allowed at the instance level
+#define VULKAN_SHADER_MAX_INSTANCE_TEXTURES 31
+
+// The maximum number of vertex input attributes allowed
+#define VULKAN_SHADER_MAX_ATTRIBUTES 16
+
+// The maximum number of uniforms and samplers allowed at the global, instance and local levels combined.
+// It's probably more than will ever be needed
+#define VULKAN_SHADER_MAX_UNIFORMS 128
+
+// The maximum number of bindings per descriptor set
+#define VULKAN_SHADER_MAX_BINDINGS 2
+
+// The maximum number of push constant ranges for a shader
+#define VULKAN_SHADER_MAX_PUSH_CONST_RANGES 32
 
 
 namespace gpu {
@@ -61,39 +79,27 @@ namespace gpu {
     unsigned int transfer_queue_family_index;
     unsigned int present_queue_family_index;
 
-    enum VertexAttributeFormat {
-        F32,
-        F32x2,
-        F32x3,
-        F32x4,
-        I8, U8,
-        I16, U16,
-        I32, U32
-    };
 
-    static VkFormat VERTEX_ATTRIBUTE_FORMATS[11] = {
-        VK_FORMAT_R32_SFLOAT,
-        VK_FORMAT_R32G32_SFLOAT,
-        VK_FORMAT_R32G32B32_SFLOAT,
-        VK_FORMAT_R32G32B32A32_SFLOAT,
-        VK_FORMAT_R8_SINT,
-        VK_FORMAT_R8_UINT,
-        VK_FORMAT_R16_SINT,
-        VK_FORMAT_R16_UINT,
-        VK_FORMAT_R32_SINT,
-        VK_FORMAT_R32_UINT
+    struct VertexAttributeType {
+        VkFormat format;
+        u8 size;
     };
+    VertexAttributeType _f32{VK_FORMAT_R32_SFLOAT, 4};
+    VertexAttributeType _vec2{VK_FORMAT_R32G32_SFLOAT, 8};
+    VertexAttributeType _vec3{VK_FORMAT_R32G32B32_SFLOAT, 12};
+    VertexAttributeType _vec4{VK_FORMAT_R32G32B32A32_SFLOAT, 16};
+    VertexAttributeType _i8{VK_FORMAT_R8_SINT, 1};
+    VertexAttributeType _u8{VK_FORMAT_R8_UINT, 1};
+    VertexAttributeType _i16{VK_FORMAT_R16_SINT, 2};
+    VertexAttributeType _u16{VK_FORMAT_R16_UINT, 2};
+    VertexAttributeType _i32{VK_FORMAT_R32_SINT, 4};
+    VertexAttributeType _u32{VK_FORMAT_R32_UINT, 4};
 
-    struct VertexAttribute {
-        VertexAttributeFormat format;
-        u32 size;
-    };
-
-    struct VertexDescriptor {
-        u32 vertex_input_stride;
-        u32 attribute_count;
-        VertexAttribute attributes[16];
-    };
+//    struct VertexAttribute {
+//        VertexAttributeType type;
+//        u8 offset;
+//        u8 binding;
+//    };
 
     enum class BufferType {
         Unknown,
@@ -184,8 +190,6 @@ namespace gpu {
     }
 
     namespace present {
-        VkViewport viewport;
-        VkRect2D scissor;
         u8 depth_channel_count; // The chosen depth format's number of channels
         VkFormat depth_format; // The chosen supported depth format
         VkSurfaceFormatKHR image_format;

@@ -7,18 +7,16 @@ using namespace gpu;
 #define VERTEX_COUNT 3
 #define INDEX_COUNT (TRIANGLE_COUNT * 3)
 
-struct Vertex { vec3 position{}; Color color; };
-Vertex vertices[VERTEX_COUNT] = {
+struct TriangleVertex { vec3 position{}; Color color; };
+TriangleVertex vertices[VERTEX_COUNT] = {
     {{0, -0.5, 0}, ColorID::Red},
     {{0.5, 0.5, 0}, ColorID::Green},
     {{0, 0.5, 0}, ColorID::Blue}
 };
 u16 indices[3 * TRIANGLE_COUNT] = {0, 1, 2};
 VertexDescriptor vertex_descriptor{
-    sizeof(Vertex), 2,
-    {{F32x3, sizeof(vec3)},
-              {F32x3, sizeof(Color)}
-    }
+    sizeof(TriangleVertex),
+    2, {_vec3, _vec3}
 };
 
 const char* vertex_shader_source_string = R"VERTEX_SHADER(#version 450
@@ -27,9 +25,17 @@ const char* vertex_shader_source_string = R"VERTEX_SHADER(#version 450
 layout(location = 0) in vec3 in_position;
 layout(location = 1) in vec3 in_color;
 layout(location = 0) out vec3 out_color;
+layout(binding = 0) uniform UniformBufferObject {
+    mat4 model;
+    mat4 view;
+    vec4 proj;
+} ubo;
+layout(push_constant) uniform PushConstants {
+    mat4 model;
+} push_constants;
 
 void main() {
-    gl_Position = vec4(in_position, 1.0);
+    gl_Position = ubo.model * vec4(in_position, 1.0);
     out_color = in_color;
 })VERTEX_SHADER";
 

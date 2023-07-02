@@ -64,8 +64,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
                                   0, 0, 0, window::height,
                                   (u32*)window::content, &Win32_bitmap_info, DIB_RGB_COLORS);
 
-                ValidateRgn(hWnd, nullptr);
             }
+            ValidateRgn(hWnd, nullptr);
             break;
 
         case WM_SYSKEYDOWN:
