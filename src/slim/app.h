@@ -71,13 +71,13 @@ struct SlimApp {
         gpu::initGPU();
         OnInit();
     }
-    INLINE void _mouseButtonUp(  mouse::Button &mouse_button) {};
-    INLINE void _mouseButtonDown(mouse::Button &mouse_button) {};
-    INLINE void _mouseButtonDoubleClicked(mouse::Button &mouse_button) {};
-    INLINE void _mouseWheelScrolled(f32 amount) {};
-    INLINE void _mousePositionSet(i32 x, i32 y) {};
-    INLINE void _mouseMovementSet(i32 x, i32 y) {};
-    INLINE void _mouseRawMovementSet(i32 x, i32 y) {};
+    INLINE void _mouseButtonUp(  mouse::Button &mouse_button) { OnMouseButtonUp(mouse_button); };
+    INLINE void _mouseButtonDown(mouse::Button &mouse_button) { OnMouseButtonDown(mouse_button); };
+    INLINE void _mouseButtonDoubleClicked(mouse::Button &mouse_button) { OnMouseButtonDoubleClicked(mouse_button); };
+    INLINE void _mouseWheelScrolled(f32 amount) { OnMouseWheelScrolled(amount); };
+    INLINE void _mousePositionSet(i32 x, i32 y) { OnMousePositionSet(x, y); };
+    INLINE void _mouseMovementSet(i32 x, i32 y) { OnMouseMovementSet(x, y); };
+    INLINE void _mouseRawMovementSet(i32 x, i32 y) { OnMouseRawMovementSet(x, y); };
     INLINE void _shutdown() {
         gpu::waitForGPU();
         OnShutdown();

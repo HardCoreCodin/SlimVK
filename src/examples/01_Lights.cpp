@@ -17,19 +17,19 @@ struct ExampleVulkanApp : SlimApp {
     PipelineLayout graphics_pipeline_layout;
     PushConstantsLayout push_constants_layout;
 
-    Camera camera{{-25 * DEG_TO_RAD, 0, 0}, {-4, 15, -17}}, *cameras{&camera};
+    Camera camera{{}, {0, 0, -3.5}}, *cameras{&camera};
     Navigation navigation;
     Frustum frustum;
 
     struct PushConstants {
-        alignas(16) mat4 model;
+        alignas(16) vec3 offset;
     };
     PushConstants push_constants;
 
     struct UniformBufferObject {
         alignas(16) mat4 model;
         alignas(16) mat4 view;
-        alignas(16) vec4 proj;
+        alignas(16) mat4 proj;
     };
     UniformBufferObject ubo;
 
@@ -69,25 +69,33 @@ struct ExampleVulkanApp : SlimApp {
 
     void OnUpdate(f32 delta_time) override {
         if (!controls::is_pressed::alt) navigation.update(camera, delta_time);
-        xform.orientation.rotateAroundZ(delta_time * DEG_TO_RAD*90.0f);
+//        xform.orientation.rotateAroundZ(delta_time * DEG_TO_RAD*90.0f);
         frustum.updateProjection(camera.focal_length, (f32)present::swapchain_rect.extent.height / (f32)present::swapchain_rect.extent.width);
 
         ubo = {
             Mat4(xform.orientation, xform.scale, xform.position),
-            Mat4(camera.orientation),
-            Vec4(frustum.projection.scale, frustum.projection.shear)
+            Mat4(camera.orientation, camera.position).inverted(),
+            mat4{frustum.projection.scale.x, 0, 0, 0,
+             0, -frustum.projection.scale.y, 0, 0,
+             0, 0, frustum.projection.scale.z, 1,
+             0, 0, frustum.projection.shear, 0}
+//            mat4(frustum.projection.scale, frustum.projection.shear)
         };
-        push_constants.model = Mat4(xform.orientation, xform.scale, xform.position);
+//        push_constants.view = ubo.view;
+//        push_constants.proj = ubo.proj;
         vertex_uniform_buffers[present::current_frame].upload(&ubo);
     }
 
     void OnRenderMainPass(GraphicsCommandBuffer &command_buffer) override {
         graphics_pipeline.bind(command_buffer);
         descriptor_sets_for_vertex_shader.bind(present::current_frame, graphics_pipeline_layout, command_buffer);
-        graphics_pipeline_layout.pushConstants(command_buffer, push_constants_layout.ranges[0], &push_constants);
         vertex_buffer.bind(command_buffer);
         index_buffer.bind(command_buffer);
-        index_buffer.draw(command_buffer);
+        for (int i = -2; i < 3; i++) {
+            push_constants.offset = {(f32)i, (f32)i, (f32)i};
+            graphics_pipeline_layout.pushConstants(command_buffer, push_constants_layout.ranges[0], &push_constants);
+            index_buffer.draw(command_buffer);
+        }
     }
 
     void OnMouseButtonDown(mouse::Button &mouse_button) override {
