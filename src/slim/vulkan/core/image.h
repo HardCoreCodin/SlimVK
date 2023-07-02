@@ -16,9 +16,16 @@ namespace gpu {
         char* name;
         VkImageViewType type;
 
-        void create(VkImageViewType view_type, u32 image_width, u32 image_height, VkFormat format, VkImageTiling tiling,
-                    VkImageUsageFlags usage, VkMemoryPropertyFlags image_memory_flags, bool create_view,
-                    VkImageAspectFlags view_aspect_flags, const char* image_name) {
+        void create(VkImageViewType view_type,
+                    u32 image_width,
+                    u32 image_height,
+                    VkFormat format,
+                    VkImageTiling tiling,
+                    VkImageUsageFlags usage,
+                    VkMemoryPropertyFlags image_memory_flags,
+                    VkImageAspectFlags view_aspect_flags,
+                    const char* image_name = nullptr,
+                    bool create_view = true) {
             // Copy params
             width = image_width;
             height = image_height;
@@ -62,10 +69,6 @@ namespace gpu {
             // Bind the memory
             VK_CHECK(vkBindImageMemory(device, handle, memory, 0))  // TODO: configurable memory offset.
 
-            // Report the memory as in-use.
-//      bool is_device_memory = (memory_flags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) == VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-//      kallocate_report(memory_requirements.size, is_device_memory ? MEMORY_TAG_GPU_LOCAL : MEMORY_TAG_VULKAN);
-
             // Create view
             if (create_view) {
                 view = nullptr;
@@ -73,11 +76,11 @@ namespace gpu {
             }
         }
 
-        void createView(VkImageViewType type, VkFormat format, VkImageAspectFlags aspect_flags) {
+        void createView(VkImageViewType view_type, VkFormat format, VkImageAspectFlags aspect_flags) {
             VkImageViewCreateInfo view_create_info = {VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
             view_create_info.image = handle;
-            view_create_info.viewType = type;
-            view_create_info.subresourceRange.layerCount = type == VK_IMAGE_VIEW_TYPE_CUBE ? 6 : 1;
+            view_create_info.viewType = view_type;
+            view_create_info.subresourceRange.layerCount = view_type == VK_IMAGE_VIEW_TYPE_CUBE ? 6 : 1;
             view_create_info.format = format;
             view_create_info.subresourceRange.aspectMask = aspect_flags;
 
@@ -117,11 +120,6 @@ namespace gpu {
                 vkDestroyImage(device, handle, nullptr);
                 handle = nullptr;
             }
-
-            // Report the memory as no longer in-use.
-            //    bool is_device_memory = (memory_flags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) == VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-            //    kfree_report(image->memory_requirements.size, is_device_memory ? MEMORY_TAG_GPU_LOCAL : MEMORY_TAG_VULKAN);
-            //    kzero_memory(&image->memory_requirements, sizeof(VkMemoryRequirements));
         }
     };
 }

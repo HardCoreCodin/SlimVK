@@ -39,24 +39,21 @@ namespace gpu {
 //        render_target render_targets[3];
 //        render_target world_render_targets[VULKAN_MAX_FRAMES_IN_FLIGHTS]; // Render targets used for world rendering. One per frame
 
-//        const unsigned int in_flight_fence_count = VULKAN_MAX_FRAMES_IN_FLIGHTS - 1; // The current number of in-flight fences
-//        VkFence in_flight_fences[VULKAN_MAX_FRAMES_IN_FLIGHTS - 1]; // The in-flight fences, used to indicate to the application when a frame is busy/ready
-
         u32 current_frame = 0;
-        bool recreating_swapchain = false; // Indicates if the swapchain is currently being recreated
+        bool recreating_swapchain = false;
         bool render_flag_changed = false;
 
         unsigned int current_image_index = 0;   // The current image index
 
         struct SwapchainFrame {
             Image image{};
-//            Image depth_image{};
+            Image depth_image{};
             FrameBuffer framebuffer{};
 
             void regenerateFrameBuffer(u32 width, u32 height) {
                 framebuffer.destroy();
-                VkImageView image_views[1] = {image.view};//, depth_image.view};
-                framebuffer.create(width, height, render_pass.handle, image_views, 1);
+                VkImageView image_views[2] = {image.view, depth_image.view};
+                framebuffer.create(width, height, render_pass.handle, image_views, 2);
             }
 
             void create(u32 width, u32 height, VkImage image_handle, u32 index) {
@@ -72,19 +69,18 @@ namespace gpu {
                 image.name = name;
                 image.createView(VK_IMAGE_VIEW_TYPE_2D, image_format.format, VK_IMAGE_ASPECT_COLOR_BIT);
 
-//                src = (char*)"swapchain_depth_image_0";
-//                dst = name;
-//                while (*src) *dst++ = *src++;
-//                *(--dst) = (char)((u8)'0' + index);
+                src = (char*)"swapchain_depth_image_0";
+                dst = name;
+                while (*src) *dst++ = *src++;
+                *(--dst) = (char)((u8)'0' + index);
 
                 // Create depth image and its view.
-//                depth_image.create(VK_IMAGE_VIEW_TYPE_2D, width, height, depth_format,
-//                                   VK_IMAGE_TILING_OPTIMAL,
-//                                   VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
-//                                   VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-//                                   true,
-//                                   VK_IMAGE_ASPECT_DEPTH_BIT,
-//                                   name);
+                depth_image.create(VK_IMAGE_VIEW_TYPE_2D, width, height, depth_format,
+                                   VK_IMAGE_TILING_OPTIMAL,
+                                   VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+                                   VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+                                   VK_IMAGE_ASPECT_DEPTH_BIT,
+                                   name);
 
                 regenerateFrameBuffer(width, height);
 
@@ -150,7 +146,7 @@ namespace gpu {
 
             void destroy() {
                 vkDestroyImageView(device, image.view, nullptr);
-//                depth_image.destroy();
+                depth_image.destroy();
                 framebuffer.destroy();
             }
         };
@@ -158,21 +154,12 @@ namespace gpu {
         SwapchainFrame swapchain_frames[VULKAN_MAX_SWAPCHAIN_FRAME_COUNT];
         GraphicsCommandBuffer _graphics_command_buffers[VULKAN_MAX_FRAMES_IN_FLIGHT];
 
-//        void regenerateFrameBuffers(u32 width, u32 height) {
-//            for (u32 i = 0; i < image_count; ++i)
-//                swapchain_frames[i].regenerateFrameBuffer(width, height);
-//        }
-
         void createSwapchain(u32 width, u32 height, bool turn_vsync_on, bool turn_power_saving_on) {
             vsync = turn_vsync_on;
             power_saving = turn_power_saving_on;
 
-            // FIFO and MAILBOX support vsync, IMMEDIATE does not.
-            // TODO: vsync seems to hold up the game update for some reason.
-            // It theoretically should be post-update and pre-render where that happens.
             if (vsync) {
                 mode = VK_PRESENT_MODE_FIFO_KHR;
-                // Only try for mailbox mode if not in power-saving mode.
                 if (!power_saving)
                     for (u32 i = 0; i < _device::present_mode_count; ++i)
                         if (_device::present_modes[i] == VK_PRESENT_MODE_MAILBOX_KHR) {
@@ -182,7 +169,6 @@ namespace gpu {
             } else
                 mode = VK_PRESENT_MODE_IMMEDIATE_KHR;
 
-            // Swapchain extent
             swapchain_rect = {{}, {width, height}};
             if (_device::surface_capabilities.currentExtent.width != UINT32_MAX)
                 swapchain_rect.extent = _device::surface_capabilities.currentExtent;
@@ -234,10 +220,8 @@ namespace gpu {
 
             VK_CHECK(vkCreateSwapchainKHR(device, &swapchain_create_info, nullptr, &swapchain))
 
-            // Start with a zero frame index.
             current_frame = 0;
 
-            // Images
             image_count = 0;
             VK_CHECK(vkGetSwapchainImagesKHR(device, swapchain, &image_count, nullptr))
 
@@ -260,45 +244,22 @@ namespace gpu {
         }
 
         bool recreateSwapchain() {
-            // If already being recreated, do not try again.
             if (recreating_swapchain) {
                 SLIM_LOG_DEBUG("recreate_swapchain called when already recreating. Booting.");
                 return false;
             }
 
-//            // Detect if the window is too small to be drawn to
-//            if (framebuffer_width == 0 || framebuffer_height == 0) {
-//                SLIM_LOG_DEBUG("recreate_swapchain called when window is < 1 in a dimension. Booting.");
-//                return false;
-//            }
+            for (u32 i = 0; i < image_count; ++i) images_in_flight[i] = nullptr;
 
-            // Clear these out just in case.
-            for (u32 i = 0; i < image_count; ++i) {
-                images_in_flight[i] = nullptr;
-//                graphics_command_pool.allocate(graphics_command_buffers[i], true);
-            }
-
-            // Mark as recreating if the dimensions are valid.
             recreating_swapchain = true;
-
-            // Wait for any operations to complete.
             vkDeviceWaitIdle(device);
 
-            // Requery support
             _device::querySupportForSurfaceFormatsAndPresentModes();
             _device::querySupportForDepthFormats();
 
             destroySwapchain();
             createSwapchain(swapchain_rect.extent.width, swapchain_rect.extent.height, vsync, power_saving);
-
-            // Update framebuffer size generation.
             framebuffer_size_last_generation = framebuffer_size_generation;
-
-            // Indicate to listeners that a render target refresh is required.
-//            event_context event_context = {0};
-//            event_fire(EVENT_CODE_DEFAULT_RENDERTARGET_REFRESH_REQUIRED, 0, event_context);
-
-            // Clear the recreating flag.
             recreating_swapchain = false;
 
             return true;
@@ -307,7 +268,6 @@ namespace gpu {
         bool acquireNextImageIndex(u64 timeout_ns, VkSemaphore image_available_semaphore, VkFence fence, unsigned int *out_image_index) {
             VkResult result = vkAcquireNextImageKHR(device, swapchain, timeout_ns, image_available_semaphore, fence, out_image_index);
             if (result == VK_ERROR_OUT_OF_DATE_KHR) {
-                // Trigger swapchain recreation, then boot out of the render loop.
                 recreateSwapchain();
                 return false;
             } else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
@@ -330,14 +290,12 @@ namespace gpu {
 
             VkResult result = vkQueuePresentKHR(present_queue, &present_info);
             if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
-                // Swapchain is out of date, suboptimal or a framebuffer resize has occurred. Trigger swapchain recreation.
                 recreateSwapchain();
                 SLIM_LOG_DEBUG("Swapchain recreated because swapchain returned out of date or suboptimal.");
             } else if (result != VK_SUCCESS) {
                 SLIM_LOG_FATAL("Failed to present swap chain image!");
             }
 
-            // Increment (and loop) the index.
             current_frame = (current_frame + 1) % max_frames_in_flight;
         }
 

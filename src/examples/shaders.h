@@ -9,9 +9,9 @@ using namespace gpu;
 
 struct TriangleVertex { vec3 position{}; Color color; };
 TriangleVertex vertices[VERTEX_COUNT] = {
-    {{0, -0.5, 0.2}, ColorID::Red},
-    {{0.5, 0.5, 0.2}, ColorID::Green},
-    {{0, 0.5, 0.2}, ColorID::Blue}
+    {{0.0f, -0.5f, 0.2f}, ColorID::Red},
+    {{0.5f, 0.5f, 0.2f}, ColorID::Green},
+    {{0.0f, 0.5f, 0.2f}, ColorID::Blue}
 };
 u16 indices[3 * TRIANGLE_COUNT] = {0, 1, 2};
 VertexDescriptor vertex_descriptor{
@@ -35,7 +35,7 @@ layout(push_constant) uniform PushConstants {
 } push_constants;
 
 void main() {
-    gl_Position = ubo.proj * ubo.view * vec4(in_position + push_constants.offset, 1.0);
+    gl_Position = ubo.proj * ubo.view * ubo.model * vec4(in_position + push_constants.offset, 1.0);
     out_color = in_color;
 })VERTEX_SHADER";
 

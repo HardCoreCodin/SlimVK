@@ -59,13 +59,16 @@ namespace gpu {
         present::render_pass.create({
             "main_render_pass",
             Color{ 0.0f, 0.0f, 0.2f }, 1.0f, 0,
-            1, {
+            2, {
                 {Attachment::Type::Color,  (
                     (u8)Attachment::Flag::Clear |
                     (u8)Attachment::Flag::Store |
                     (u8)Attachment::Flag::Present
                 )},
-//                { Attachment::Type::Depth }
+                { Attachment::Type::Depth ,  (
+                    (u8)Attachment::Flag::Clear |
+                    (u8)Attachment::Flag::Store
+                )}
             }
         });
 

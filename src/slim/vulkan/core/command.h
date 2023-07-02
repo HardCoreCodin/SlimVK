@@ -6,6 +6,7 @@ namespace gpu {
 
     struct CommandBuffer {
         VkCommandBuffer handle;
+        const VkPipelineBindPoint bind_point;
 
     protected:
         const VkCommandPool pool;
@@ -19,9 +20,10 @@ namespace gpu {
             VkCommandBuffer buffer = nullptr,
             VkCommandPool pool = nullptr,
             VkQueue queue = nullptr,
-            unsigned int queue_family_index = 0) :
-
+            unsigned int queue_family_index = 0,
+            VkPipelineBindPoint bind_point = VK_PIPELINE_BIND_POINT_GRAPHICS) :
             handle{buffer},
+            bind_point{bind_point},
             pool{pool},
             queue{queue},
             queue_family_index{queue_family_index} {
@@ -147,7 +149,7 @@ namespace gpu {
             allocate_info.commandBufferCount = 1;
             VkCommandBuffer command_buffer_handle;
             VK_CHECK(vkAllocateCommandBuffers(device, &allocate_info, &command_buffer_handle))
-            new(&temp_command_buffer)CommandBuffer(command_buffer_handle, pool, queue, queue_family_index);
+            new(&temp_command_buffer)CommandBuffer(command_buffer_handle, pool, queue, queue_family_index, bind_point);
             temp_command_buffer.reset();
 
             temp_command_buffer.beginSingleUse();

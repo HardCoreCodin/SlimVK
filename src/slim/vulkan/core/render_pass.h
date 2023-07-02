@@ -118,7 +118,6 @@ namespace gpu {
                 sub_pass.pDepthStencilAttachment = nullptr;
             }
 
-            bool has_depth_input_attachment = false;
             unsigned int depth_input_attachment_index = -1;
 
             // Input from a shader
@@ -143,10 +142,10 @@ namespace gpu {
             dependency.dependencyFlags = 0;
 
             // 1.1 Aspect Reference (disambiguate between depth vs. stencil input attachment to read):
-            VkInputAttachmentAspectReference aspect_reference {0,depth_input_attachment_index, VK_IMAGE_ASPECT_DEPTH_BIT};
-            VkRenderPassInputAttachmentAspectCreateInfo aspect {VK_STRUCTURE_TYPE_RENDER_PASS_INPUT_ATTACHMENT_ASPECT_CREATE_INFO };
-            aspect.aspectReferenceCount = 1;
-            aspect.pAspectReferences = &aspect_reference;
+//            VkInputAttachmentAspectReference aspect_reference {0,depth_input_attachment_index, VK_IMAGE_ASPECT_DEPTH_BIT};
+//            VkRenderPassInputAttachmentAspectCreateInfo aspect {VK_STRUCTURE_TYPE_RENDER_PASS_INPUT_ATTACHMENT_ASPECT_CREATE_INFO };
+//            aspect.aspectReferenceCount = 1;
+//            aspect.pAspectReferences = &aspect_reference;
 
             // Render pass create.
             VkRenderPassCreateInfo render_pass_create_info = {VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO};
@@ -156,8 +155,8 @@ namespace gpu {
             render_pass_create_info.pSubpasses = &sub_pass;
             render_pass_create_info.dependencyCount = 1;
             render_pass_create_info.pDependencies = &dependency;
-            render_pass_create_info.pNext = has_depth_input_attachment ? &aspect : nullptr;
-            render_pass_create_info.flags = 0;
+//            render_pass_create_info.pNext = depth_attachment_count > 0 ? &aspect : nullptr;
+//            render_pass_create_info.flags = 0;
 
             VK_CHECK(vkCreateRenderPass(device, &render_pass_create_info, nullptr, &handle))
 

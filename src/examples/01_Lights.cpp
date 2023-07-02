@@ -9,13 +9,13 @@ using namespace gpu;
 struct ExampleVulkanApp : SlimApp {
     VertexBuffer vertex_buffer;
     IndexBuffer index_buffer;
-    GraphicsPipeline graphics_pipeline;
 
     DescriptorPool descriptor_pool_for_uniform_buffers;
     DescriptorSetLayout vertex_shader_descriptor_set_layout;
     DescriptorSets descriptor_sets_for_vertex_shader;
-    PipelineLayout graphics_pipeline_layout;
     PushConstantsLayout push_constants_layout;
+    PipelineLayout graphics_pipeline_layout;
+    GraphicsPipeline graphics_pipeline;
 
     Camera camera{{}, {0, 0, -3.5}}, *cameras{&camera};
     Navigation navigation;
@@ -69,7 +69,7 @@ struct ExampleVulkanApp : SlimApp {
 
     void OnUpdate(f32 delta_time) override {
         if (!controls::is_pressed::alt) navigation.update(camera, delta_time);
-//        xform.orientation.rotateAroundZ(delta_time * DEG_TO_RAD*90.0f);
+//        xform.orientation.rotateAroundY(delta_time * DEG_TO_RAD*90.0f);
         frustum.updateProjection(camera.focal_length, (f32)present::swapchain_rect.extent.height / (f32)present::swapchain_rect.extent.width);
 
         ubo = {
@@ -92,7 +92,7 @@ struct ExampleVulkanApp : SlimApp {
         vertex_buffer.bind(command_buffer);
         index_buffer.bind(command_buffer);
         for (int i = -2; i < 3; i++) {
-            push_constants.offset = {(f32)i, (f32)i, (f32)i};
+            push_constants.offset = {(f32)i, (f32)i, -(f32)i};
             graphics_pipeline_layout.pushConstants(command_buffer, push_constants_layout.ranges[0], &push_constants);
             index_buffer.draw(command_buffer);
         }

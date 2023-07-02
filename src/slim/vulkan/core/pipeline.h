@@ -177,15 +177,13 @@ namespace gpu {
             VkPipelineViewportStateCreateInfo viewportState{VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO};
             viewportState.viewportCount = 1;
             viewportState.scissorCount = 1;
-//            viewportState.pViewports = &present::viewport;
-//            viewportState.pScissors = &present::scissor;
 
             VkPipelineRasterizationStateCreateInfo rasterizer{VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO};
             rasterizer.depthClampEnable = VK_FALSE;
             rasterizer.rasterizerDiscardEnable = VK_FALSE;
             rasterizer.polygonMode = is_wireframe ? VK_POLYGON_MODE_LINE : VK_POLYGON_MODE_FILL;
             rasterizer.lineWidth = 1.0f;
-            rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
+//            rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
             rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
 //            rasterizer.depthBiasEnable = VK_FALSE;
 //            rasterizer.depthBiasConstantFactor = 0.0f;
@@ -196,7 +194,6 @@ namespace gpu {
             multisampling.sampleShadingEnable = VK_FALSE;
             multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
             multisampling.minSampleShading = 1.0f;
-            multisampling.pSampleMask = 0;
             multisampling.alphaToCoverageEnable = VK_FALSE;
             multisampling.alphaToOneEnable = VK_FALSE;
 
@@ -206,10 +203,6 @@ namespace gpu {
             depth_stencil.depthCompareOp = VK_COMPARE_OP_LESS;
             depth_stencil.depthBoundsTestEnable = VK_FALSE;
             depth_stencil.stencilTestEnable = VK_FALSE;
-
-//            VkPipelineColorBlendAttachmentState colorBlendAttachment{};
-//            colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-//            colorBlendAttachment.blendEnable = VK_FALSE;
 
             VkPipelineColorBlendAttachmentState blend_attachment {};
             blend_attachment.blendEnable = VK_TRUE;
@@ -249,7 +242,7 @@ namespace gpu {
             pipelineInfo.pMultisampleState = &multisampling;
             pipelineInfo.pColorBlendState = &blend;
             pipelineInfo.pDynamicState = &dynamic;
-//            pipelineInfo.pDepthStencilState = &depth_stencil;
+            pipelineInfo.pDepthStencilState = &depth_stencil;
             pipelineInfo.layout = pipeline_layout.handle;
             pipelineInfo.renderPass = render_pass.handle;
             pipelineInfo.subpass = 0;
@@ -387,7 +380,7 @@ namespace gpu {
         u32 count;
 
         void bind(u32 set_index, const PipelineLayout &set_layout, const CommandBuffer &command_buffer) {
-            vkCmdBindDescriptorSets(command_buffer.handle, VK_PIPELINE_BIND_POINT_GRAPHICS,
+            vkCmdBindDescriptorSets(command_buffer.handle, command_buffer.bind_point,
                                     set_layout.handle, 0, 1,
                                     &handles[set_index], 0, nullptr);
         }
