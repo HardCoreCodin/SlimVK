@@ -14,6 +14,7 @@ namespace gpu {
         VkMemoryPropertyFlags memory_flags;
         u32 width;
         u32 height;
+        u32 mip_count;
         char* name;
         VkImageViewType type;
 
@@ -42,6 +43,7 @@ namespace gpu {
                     const char* image_name,
                     VkImageUsageFlags usage,
                     VkImageAspectFlags view_aspect_flags = VK_IMAGE_ASPECT_COLOR_BIT,
+                    bool mip_map = true,
                     bool create_view = true,
                     bool create_sampler = true,
                     VkImageTiling tiling = VK_IMAGE_TILING_OPTIMAL,
@@ -54,6 +56,9 @@ namespace gpu {
             memory_flags = image_memory_flags;
             name = (char*)image_name;
             type = view_type;
+            mip_count = 1;
+            if (mip_map)
+                mip_count += static_cast<uint32_t>(floor(log2(Max(width, height))));
 
             // Creation info.
             VkImageCreateInfo image_create_info = {VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
@@ -62,7 +67,7 @@ namespace gpu {
             image_create_info.extent.width = width;
             image_create_info.extent.height = height;
             image_create_info.extent.depth = 1;                                 // TODO: Support configurable depth.
-            image_create_info.mipLevels = 1;                                    // TODO: Support mip mapping
+            image_create_info.mipLevels = mip_count;
             image_create_info.arrayLayers = type == VK_IMAGE_VIEW_TYPE_CUBE ? 6 : 1;  // TODO: Support number of layers in the image.
             image_create_info.format = format;
             image_create_info.tiling = tiling;
@@ -110,7 +115,7 @@ namespace gpu {
             view_create_info.subresourceRange.layerCount = view_type == VK_IMAGE_VIEW_TYPE_CUBE ? 6 : 1;
             view_create_info.format = format;
             view_create_info.subresourceRange.aspectMask = aspect_flags;
-            view_create_info.subresourceRange.levelCount = 1;
+            view_create_info.subresourceRange.levelCount = mip_count;
             view_create_info.subresourceRange.layerCount = 1;
             view_create_info.subresourceRange.baseMipLevel = 0;
             view_create_info.subresourceRange.baseArrayLayer = 0;
@@ -132,7 +137,7 @@ namespace gpu {
             VK_SET_DEBUG_OBJECT_NAME(VK_OBJECT_TYPE_IMAGE_VIEW, view, formatted_name);
         }
 
-        void createSampler() {
+        void createSampler(bool mip_map = true) {
             VkSamplerCreateInfo samplerInfo{VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
             samplerInfo.magFilter = VK_FILTER_LINEAR;
             samplerInfo.minFilter = VK_FILTER_LINEAR;
@@ -146,25 +151,45 @@ namespace gpu {
             samplerInfo.compareEnable = VK_FALSE;
             samplerInfo.compareOp = VK_COMPARE_OP_ALWAYS;
             samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+            if (mip_map) samplerInfo.maxLod = (float)mip_count;
+//            samplerInfo.minLod = 0.0f;
+//            samplerInfo.mipLodBias = 0.0f;
 
             VK_CHECK(vkCreateSampler(device, &samplerInfo, nullptr, &sampler))
         }
 
-        void transitionLayout(VkImageLayout old_layout, VkImageLayout new_layout, const CommandBuffer &command_buffer) const {
+        void transitionLayout(VkImageLayout old_layout,
+                              VkImageLayout new_layout,
+                              VkPipelineStageFlags source_stage,
+                              VkPipelineStageFlags dest_stage,
+                              VkAccessFlags source_access_mask,
+                              VkAccessFlags dest_access_mask,
+                              const CommandBuffer &command_buffer,
+                              u32 base_mip_level = 0,
+                              u32 mip_level_count = 1) const {
             VkImageMemoryBarrier barrier = {VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
             barrier.oldLayout = old_layout;
             barrier.newLayout = new_layout;
             barrier.srcQueueFamilyIndex = command_buffer.queue_family_index;
             barrier.dstQueueFamilyIndex = command_buffer.queue_family_index;
             barrier.image = handle;
+            barrier.srcAccessMask = source_access_mask;
+            barrier.dstAccessMask = dest_access_mask;
             barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-            barrier.subresourceRange.baseMipLevel = 0;
-            barrier.subresourceRange.levelCount = 1;
+            barrier.subresourceRange.baseMipLevel = base_mip_level;
+            barrier.subresourceRange.levelCount = mip_level_count;
             barrier.subresourceRange.baseArrayLayer = 0;
             barrier.subresourceRange.layerCount = type == VK_IMAGE_VIEW_TYPE_CUBE ? 6 : 1;
 
-            VkPipelineStageFlags source_stage;
-            VkPipelineStageFlags dest_stage;
+            vkCmdPipelineBarrier(command_buffer.handle, source_stage, dest_stage, 0,
+                                 0, nullptr,
+                                 0, nullptr,
+                                 1, &barrier);
+        }
+
+        void transitionLayout(VkImageLayout old_layout, VkImageLayout new_layout, const CommandBuffer &command_buffer, bool mip_map = true) const {
+            VkPipelineStageFlags source_stage, dest_stage;
+            VkAccessFlags source_access_mask, dest_access_mask;
 
             // Transition from an initial layout into transfer layout for copying to/from:
             if (old_layout == VK_IMAGE_LAYOUT_UNDEFINED &&
@@ -172,8 +197,8 @@ namespace gpu {
                  new_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)) {
                 source_stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT; // Don't care what stage the pipeline is at initially
                 dest_stage = VK_PIPELINE_STAGE_TRANSFER_BIT; // Used for copying
-                barrier.srcAccessMask = 0; // Don't care about the old layout - transition to optimal layout
-                barrier.dstAccessMask = new_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL ?
+                source_access_mask = 0; // Don't care about the old layout - transition to optimal layout
+                dest_access_mask = new_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL ?
                         VK_ACCESS_TRANSFER_WRITE_BIT : // Transition into transfer dst so need to write to it
                         VK_ACCESS_TRANSFER_READ_BIT;   // Transition into transfer src so need to read from it
             } else if ( // Transition from transfer layout (completed copying to/from) into reading in fragment shader:
@@ -182,19 +207,15 @@ namespace gpu {
                 old_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)) {
                 source_stage = VK_PIPELINE_STAGE_TRANSFER_BIT; // From a copying stage to...
                 dest_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT; // The fragment stage
-                barrier.srcAccessMask = old_layout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL ?
+                source_access_mask = old_layout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL ?
                     VK_ACCESS_TRANSFER_READ_BIT : // Transitioning from a transfer src so was read from
                     VK_ACCESS_TRANSFER_WRITE_BIT; // Transitioning from a transfer dst so was written to
-                barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT; // Transition into reading from a shader
+                dest_access_mask = VK_ACCESS_SHADER_READ_BIT; // Transition into reading from a shader
             } else {
                 SLIM_LOG_FATAL("unsupported layout transition!");
                 return;
             }
-
-            vkCmdPipelineBarrier(command_buffer.handle, source_stage, dest_stage, 0,
-                                 0, nullptr,
-                                 0, nullptr,
-                                 1, &barrier);
+            transitionLayout(old_layout, new_layout, source_stage, dest_stage, source_access_mask, dest_access_mask, command_buffer, 0, mip_map ? mip_count : 1);
         }
 
         void copyFromBuffer(const Buffer &from_buffer, const CommandBuffer &command_buffer, u32 x = -1, u32 y = -1) const {
@@ -211,17 +232,81 @@ namespace gpu {
                                    to_buffer.handle, 1,&region);
         }
 
-        bool createTextureFromPixels(const ByteColor *pixels, u32 image_width, u32 image_height, const CommandBuffer &command_buffer, const char *texture_name = nullptr) {
+        bool createTextureFromPixels(const ByteColor *pixels, u32 image_width, u32 image_height,
+                                     const CommandBuffer &command_buffer, const char *texture_name,
+                                     VkFormat format = VK_FORMAT_R8G8B8A8_SRGB, bool mip_map = true) {
             Buffer staging{};
             if (!staging.createAsStaging(sizeof(ByteColor) * image_width * image_height, pixels))
                 return false;
 
-            create(image_width, image_height, VK_FORMAT_R8G8B8A8_SRGB, texture_name, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT);
+            VkImageUsageFlags usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+            if (mip_map)
+                usage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+
+            create(image_width, image_height, format, texture_name, usage);
 
             command_buffer.beginSingleUse();
             transitionLayout(VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, command_buffer);
             copyFromBuffer(staging, command_buffer);
-            transitionLayout(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, command_buffer);
+            if (mip_map) {
+                // Check if image format supports linear blitting
+//                VkFormatProperties formatProperties;
+//                vkGetPhysicalDeviceFormatProperties(physical_device, format, &formatProperties);
+//                if (!(formatProperties.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT)) {
+//                    throw std::runtime_error("texture image format does not support linear blitting!");
+//                }
+
+
+
+
+                i32 mipWidth = (i32)width;
+                i32 mipHeight = (i32)height;
+                for (u32 src_mip_level = 0, dst_mip_level = 1; dst_mip_level < mip_count; src_mip_level++, dst_mip_level++) {
+                    transitionLayout(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                                     VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                     VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT,
+                                     command_buffer, src_mip_level);
+
+                    VkImageBlit blit{};
+                    blit.srcOffsets[0] = {0, 0, 0};
+                    blit.dstOffsets[0] = {0, 0, 0};
+                    blit.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+                    blit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+                    blit.srcSubresource.baseArrayLayer = 0;
+                    blit.dstSubresource.baseArrayLayer = 0;
+                    blit.srcSubresource.layerCount = 1;
+                    blit.dstSubresource.layerCount = 1;
+                    blit.srcSubresource.mipLevel = src_mip_level;
+                    blit.dstSubresource.mipLevel = dst_mip_level;
+
+                    blit.srcOffsets[1] = {mipWidth,
+                                          mipHeight,
+                                          1};
+                    blit.dstOffsets[1] = { mipWidth > 1 ? mipWidth / 2 : 1,
+                                           mipHeight > 1 ? mipHeight / 2 : 1,
+                                           1 };
+
+                    vkCmdBlitImage(command_buffer.handle,
+                                   handle, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                                   handle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                   1, &blit, VK_FILTER_LINEAR);
+
+                    transitionLayout(VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                                     VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                                     VK_ACCESS_TRANSFER_READ_BIT, VK_ACCESS_SHADER_READ_BIT,
+                                     command_buffer, blit.srcSubresource.mipLevel);
+
+                    if (mipWidth > 1) mipWidth /= 2;
+                    if (mipHeight > 1) mipHeight /= 2;
+                }
+
+                transitionLayout(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                                 VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                                 VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
+                                 command_buffer, mip_count - 1);
+            } else
+                transitionLayout(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, command_buffer);
+
             command_buffer.endSingleUse();
 
             staging.destroy();
@@ -255,23 +340,7 @@ namespace gpu {
             region.imageExtent.width = x == -1 ? width : x;
             region.imageExtent.height = y == -1 ? height : y;
             region.imageExtent.depth = 1;
-//
-//            region.bufferOffset = 0;
-//            region.bufferRowLength = 0;
-//            region.bufferImageHeight = 0;
-//            region.imageSubresource.mipLevel = 0;
-//            region.imageSubresource.baseArrayLayer = 0;
-//
-//            region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-//            region.imageSubresource.mipLevel = 0;
-//            region.imageSubresource.baseArrayLayer = 0;
-//            region.imageSubresource.layerCount = 1;
-//            region.imageOffset = {0, 0, 0};
-//            region.imageExtent = {
-//                width,
-//                height,
-//                1
-//            };
+
             return region;
         }
     };

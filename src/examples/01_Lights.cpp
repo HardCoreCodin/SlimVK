@@ -40,7 +40,11 @@ struct ExampleVulkanApp : SlimApp {
     GPUImage floor_albedo;
 
     void OnInit() override {
-        floor_albedo.createTextureFromPixels(floor_albedo_image.content, floor_albedo_image.width, floor_albedo_image.height, transient_graphics_command_buffer, image_file_names[0]);
+        floor_albedo.createTextureFromPixels(floor_albedo_image.content,
+                                             floor_albedo_image.width,
+                                             floor_albedo_image.height,
+                                             transient_graphics_command_buffer,
+                                             image_file_names[0]);
 
         push_constants_layout.addForVertexAndFragment(sizeof(PushConstants));
         vertex_buffer.create(VERTEX_COUNT, sizeof(TriangleVertex));

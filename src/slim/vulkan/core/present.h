@@ -67,6 +67,7 @@ namespace gpu {
                 image.width = width;
                 image.height = height;
                 image.name = name;
+                image.mip_count = 1;
                 image.createView(VK_IMAGE_VIEW_TYPE_2D, image_format.format, VK_IMAGE_ASPECT_COLOR_BIT);
 
                 src = (char*)"swapchain_depth_image_0";
@@ -77,7 +78,7 @@ namespace gpu {
                 // Create depth image and its view.
                 depth_image.create(width, height, depth_format, name,
                                    VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
-                                   VK_IMAGE_ASPECT_DEPTH_BIT, true, false);
+                                   VK_IMAGE_ASPECT_DEPTH_BIT, false, true, false);
 
                 regenerateFrameBuffer(width, height);
 
