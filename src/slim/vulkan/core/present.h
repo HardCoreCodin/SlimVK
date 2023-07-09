@@ -46,8 +46,8 @@ namespace gpu {
         unsigned int current_image_index = 0;   // The current image index
 
         struct SwapchainFrame {
-            Image image{};
-            Image depth_image{};
+            GPUImage image{};
+            GPUImage depth_image{};
             FrameBuffer framebuffer{};
 
             void regenerateFrameBuffer(u32 width, u32 height) {
@@ -75,12 +75,9 @@ namespace gpu {
                 *(--dst) = (char)((u8)'0' + index);
 
                 // Create depth image and its view.
-                depth_image.create(VK_IMAGE_VIEW_TYPE_2D, width, height, depth_format,
-                                   VK_IMAGE_TILING_OPTIMAL,
+                depth_image.create(width, height, depth_format, name,
                                    VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
-                                   VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-                                   VK_IMAGE_ASPECT_DEPTH_BIT,
-                                   name);
+                                   VK_IMAGE_ASPECT_DEPTH_BIT, true, false);
 
                 regenerateFrameBuffer(width, height);
 

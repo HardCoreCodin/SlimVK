@@ -1,18 +1,20 @@
 #include "./shaders.h"
 #include "../slim/core/transform.h"
-#include "../slim/math/utils.h"
 #include "../slim/viewport/navigation.h"
 #include "../slim/viewport/frustum.h"
 #include "../slim/app.h"
+
+#include "./images.h"
+
 using namespace gpu;
 
 struct ExampleVulkanApp : SlimApp {
     VertexBuffer vertex_buffer;
     IndexBuffer index_buffer;
 
-    DescriptorPool descriptor_pool_for_uniform_buffers;
-    DescriptorSetLayout vertex_shader_descriptor_set_layout;
-    DescriptorSets descriptor_sets_for_vertex_shader;
+    DescriptorPool descriptor_pool;
+    DescriptorSetLayout descriptor_set_layout;
+    DescriptorSets descriptor_sets;
     PushConstantsLayout push_constants_layout;
     PipelineLayout graphics_pipeline_layout;
     GraphicsPipeline graphics_pipeline;
@@ -35,29 +37,37 @@ struct ExampleVulkanApp : SlimApp {
 
     Transform xform{};
 
+    GPUImage floor_albedo;
+
     void OnInit() override {
+        floor_albedo.createTextureFromPixels(floor_albedo_image.content, floor_albedo_image.width, floor_albedo_image.height, transient_graphics_command_buffer, image_file_names[0]);
+
         push_constants_layout.addForVertexAndFragment(sizeof(PushConstants));
         vertex_buffer.create(VERTEX_COUNT, sizeof(TriangleVertex));
         index_buffer.create(INDEX_COUNT, sizeof(u16));
 
-        vertex_shader_descriptor_set_layout.createForVertexUniformBuffer();
-        graphics_pipeline_layout.create(&vertex_shader_descriptor_set_layout, &push_constants_layout);
+        descriptor_set_layout.addForVertexUniformBuffer(0);
+        descriptor_set_layout.addForFragmentTexture(1);
+        descriptor_set_layout.create();
+
+        graphics_pipeline_layout.create(&descriptor_set_layout, &push_constants_layout);
 //        graphics_pipeline_layout.create(nullptr, &push_constants_layout);
 
-        descriptor_pool_for_uniform_buffers.createForUniformBuffers(VULKAN_MAX_FRAMES_IN_FLIGHT);
+        descriptor_pool.addForUniformBuffers(1);
+        descriptor_pool.addForCombinedImageSamplers(1);
+        descriptor_pool.create(VULKAN_MAX_FRAMES_IN_FLIGHT);
 
         vertex_buffer.upload(vertices);
         index_buffer.upload(indices);
 
-        VkDescriptorSetLayout descriptor_set_layouts[VULKAN_MAX_FRAMES_IN_FLIGHT];
-        for (size_t i = 0; i < VULKAN_MAX_FRAMES_IN_FLIGHT; i++) {
-            descriptor_set_layouts[i] = vertex_shader_descriptor_set_layout.handle;
-            vertex_uniform_buffers[i].create(sizeof(UniformBufferObject));
-        }
-        descriptor_pool_for_uniform_buffers.allocate(VULKAN_MAX_FRAMES_IN_FLIGHT, descriptor_set_layouts, descriptor_sets_for_vertex_shader);
+        descriptor_sets.count = VULKAN_MAX_FRAMES_IN_FLIGHT;
+        descriptor_pool.allocate(descriptor_set_layout, descriptor_sets);
 
-        for (size_t i = 0; i < VULKAN_MAX_FRAMES_IN_FLIGHT; i++)
-            vertex_uniform_buffers[i].update(descriptor_sets_for_vertex_shader.handles[i]);
+        for (size_t i = 0; i < VULKAN_MAX_FRAMES_IN_FLIGHT; i++) {
+            vertex_uniform_buffers[i].create(sizeof(UniformBufferObject));
+            vertex_uniform_buffers[i].writeDescriptor(descriptor_sets.handles[i], 0);
+            floor_albedo.writeSamplerDescriptor(descriptor_sets.handles[i], 1);
+        }
 
         graphics_pipeline.createFromSourceStrings(
             present::render_pass,
@@ -88,7 +98,7 @@ struct ExampleVulkanApp : SlimApp {
 
     void OnRenderMainPass(GraphicsCommandBuffer &command_buffer) override {
         graphics_pipeline.bind(command_buffer);
-        descriptor_sets_for_vertex_shader.bind(present::current_frame, graphics_pipeline_layout, command_buffer);
+        graphics_pipeline_layout.bind(descriptor_sets.handles[present::current_frame], command_buffer);
         vertex_buffer.bind(command_buffer);
         index_buffer.bind(command_buffer);
         for (int i = -2; i < 3; i++) {
@@ -123,14 +133,15 @@ struct ExampleVulkanApp : SlimApp {
     }
 
     void OnShutdown() override {
+        floor_albedo.destroy();
         graphics_pipeline.destroy();
         graphics_pipeline_layout.destroy();
         index_buffer.destroy();
         vertex_buffer.destroy();
         for (size_t i = 0; i < VULKAN_MAX_FRAMES_IN_FLIGHT; i++) vertex_uniform_buffers[i].destroy();
 
-        vertex_shader_descriptor_set_layout.destroy();
-        descriptor_pool_for_uniform_buffers.destroy();
+        descriptor_set_layout.destroy();
+        descriptor_pool.destroy();
     }
 };
 

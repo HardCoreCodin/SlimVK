@@ -109,19 +109,29 @@ namespace gpu {
 
     struct GraphicsBuffer : Buffer {
         bool resize(u64 new_size) {
-            return transient_graphics_command_buffer.resize(*this, new_size);
+            return Buffer::resize(new_size, transient_graphics_command_buffer);
         }
 
-        bool download(void **to, u64 size = 0, u64 from_offset = 0) {
-            return transient_graphics_command_buffer.download(*this, to, size, from_offset);
+        bool download(void **to, u64 size = 0, u64 from_offset = 0) const {
+            return Buffer::download(to, transient_graphics_command_buffer, size, from_offset);
         }
 
-        bool upload(const void *from, u64 size = 0, u64 to_offset = 0) {
-            return transient_graphics_command_buffer.upload(from, *this, size, to_offset);
+        bool upload(const void *from, u64 size = 0, u64 to_offset = 0) const {
+            return Buffer::upload(from, transient_graphics_command_buffer, size, to_offset);
         }
 
         bool copyTo(const Buffer &to_buffer, u64 size, u64 from_offset, u64 to_offset) const {
-            return transient_graphics_command_buffer.copy(*this, to_buffer, size, from_offset, to_offset);
+            return Buffer::copyTo(to_buffer, transient_graphics_command_buffer, size, from_offset, to_offset);
+        }
+    };
+
+    struct GraphicsImage : GPUImage {
+        void copyFromBuffer(const Buffer &from_buffer, u32 x = -1, u32 y = -1) const {
+            GPUImage::copyFromBuffer(from_buffer, transient_graphics_command_buffer, x, y);
+        }
+
+        void copyToBuffer(const Buffer &to_buffer, u32 x = -1, u32 y = -1) const {
+            GPUImage::copyToBuffer(to_buffer, transient_graphics_command_buffer, x, y);
         }
     };
 
@@ -177,16 +187,15 @@ namespace gpu {
             return Buffer::create(BufferType::Uniform, size);
         }
 
-        void update(VkDescriptorSet descriptor_set) {
+        void writeDescriptor(VkDescriptorSet descriptor_set, u32 binding_index) {
             VkDescriptorBufferInfo bufferInfo{};
             bufferInfo.buffer = handle;
             bufferInfo.offset = 0;
             bufferInfo.range = total_size;
 
-            VkWriteDescriptorSet descriptorWrite{};
-            descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            VkWriteDescriptorSet descriptorWrite{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
             descriptorWrite.dstSet = descriptor_set;
-            descriptorWrite.dstBinding = 0;
+            descriptorWrite.dstBinding = binding_index;
             descriptorWrite.dstArrayElement = 0;
             descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
             descriptorWrite.descriptorCount = 1;

@@ -65,10 +65,7 @@ namespace gpu {
                     (u8)Attachment::Flag::Store |
                     (u8)Attachment::Flag::Present
                 )},
-                { Attachment::Type::Depth ,  (
-                    (u8)Attachment::Flag::Clear |
-                    (u8)Attachment::Flag::Store
-                )}
+                { Attachment::Type::Depth ,  (u8)Attachment::Flag::Clear}
             }
         });
 

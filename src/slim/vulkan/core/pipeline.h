@@ -36,6 +36,8 @@ namespace gpu {
 
     struct DescriptorSetLayout {
         VkDescriptorSetLayout handle;
+        VkDescriptorSetLayoutBinding layout_bindings[16];
+        u32 layout_binding_count = 0;
 
         void destroy() {
             if (handle) {
@@ -44,23 +46,113 @@ namespace gpu {
             }
         }
 
-        void create(VkDescriptorType type, VkShaderStageFlags stages, u32 binding = 0) {
-            VkDescriptorSetLayoutBinding layout_binding{};
-            layout_binding.binding = binding;
-            layout_binding.descriptorCount = 1;
+        void add(VkDescriptorType type, VkShaderStageFlags stages, u32 binding_index = 0, u32 descriptor_count = 1) {
+            VkDescriptorSetLayoutBinding &layout_binding{layout_bindings[layout_binding_count++]};
+            layout_binding.binding = binding_index;
+            layout_binding.descriptorCount = descriptor_count;
             layout_binding.descriptorType = type;
             layout_binding.pImmutableSamplers = nullptr;
             layout_binding.stageFlags = stages;
+        }
 
+        void create() {
             VkDescriptorSetLayoutCreateInfo layout_info{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
-            layout_info.bindingCount = 1;
-            layout_info.pBindings = &layout_binding;
+            layout_info.bindingCount = layout_binding_count;
+            layout_info.pBindings = layout_bindings;
 
             VK_CHECK(vkCreateDescriptorSetLayout(device, &layout_info, nullptr, &handle))
         }
 
-        void createForVertexUniformBuffer(u32 binding = 0) {
-            create(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT, binding);
+        void addForVertexUniformBuffer(u32 binding_index) {
+            add(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT, binding_index);
+        }
+
+        void addForFragmentTexture(u32 binding_index) {
+            add(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, binding_index);
+        }
+    };
+
+    struct DescriptorSets {
+        VkDescriptorSet handles[16];
+        u32 count;
+    };
+
+    struct DescriptorPool {
+        VkDescriptorPool handle;
+        VkDescriptorPoolSize pool_sizes[16];
+        u8 pool_size_count = 0;
+
+        void destroy() {
+            if (handle) {
+                vkDestroyDescriptorPool(device, handle, nullptr);
+                handle = nullptr;
+            }
+        }
+
+        void create(u32 max_sets) {
+            VkDescriptorPoolCreateInfo poolInfo{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
+            poolInfo.poolSizeCount = pool_size_count;
+            poolInfo.pPoolSizes = pool_sizes;
+            poolInfo.maxSets = max_sets;
+
+            VK_CHECK(vkCreateDescriptorPool(device, &poolInfo, nullptr, &handle))
+        }
+
+        void addForType(VkDescriptorType type, u32 descriptor_count) {
+            VkDescriptorPoolSize *pool_size = nullptr;
+            for (u8 i = 0; i < pool_size_count; i++)
+                if (pool_sizes[i].type == type) {
+                    pool_size = &pool_sizes[i];
+                    break;
+                }
+
+            if (pool_size) {
+                pool_size->descriptorCount += descriptor_count;
+            } else {
+                pool_size = &pool_sizes[pool_size_count++];
+                pool_size->type = type;
+                pool_size->descriptorCount = descriptor_count;
+            }
+        }
+
+        void addForUniformBuffers(u32 descriptor_count) {
+            addForType(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, descriptor_count);
+        }
+
+        void addForCombinedImageSamplers(u32 descriptor_count) {
+            addForType(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, descriptor_count);
+        }
+
+        void allocate(const VkDescriptorSetLayout *descriptor_set_layouts, DescriptorSets &out_descriptor_sets) {
+            VkDescriptorSetAllocateInfo allocInfo{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
+            allocInfo.descriptorPool = handle;
+            allocInfo.descriptorSetCount = out_descriptor_sets.count;
+            allocInfo.pSetLayouts = descriptor_set_layouts;
+
+            VK_CHECK(vkAllocateDescriptorSets(device, &allocInfo, out_descriptor_sets.handles))
+        }
+
+        void allocate(const DescriptorSetLayout &descriptor_set_layout, DescriptorSets &out_descriptor_sets) {
+            VkDescriptorSetLayout descriptor_set_layouts[16];
+            for (size_t i = 0; i < out_descriptor_sets.count; i++) {
+                descriptor_set_layouts[i] = descriptor_set_layout.handle;
+            }
+
+            VkDescriptorSetAllocateInfo allocInfo{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
+            allocInfo.descriptorPool = handle;
+            allocInfo.descriptorSetCount = out_descriptor_sets.count;
+            allocInfo.pSetLayouts = descriptor_set_layouts;
+
+            VK_CHECK(vkAllocateDescriptorSets(device, &allocInfo, out_descriptor_sets.handles))
+        }
+
+        void allocate(VkDescriptorSetLayout descriptor_set_layout, VkDescriptorSet &out_descriptor_set) {
+            VkDescriptorSetAllocateInfo allocInfo{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
+            allocInfo.descriptorPool = handle;
+            allocInfo.descriptorSetCount = 1;
+            allocInfo.pSetLayouts = &descriptor_set_layout;
+
+            VK_CHECK(vkAllocateDescriptorSets(device, &allocInfo, &out_descriptor_set))
         }
     };
 
@@ -107,6 +199,18 @@ namespace gpu {
 
         void pushConstants(const GraphicsCommandBuffer &command_buffer, VkPushConstantRange &range, const void *data) {
             vkCmdPushConstants(command_buffer.handle, handle, range.stageFlags, range.offset, range.size, data);
+        }
+
+        void bind(const VkDescriptorSet &descriptor_set, const CommandBuffer &command_buffer) {
+            vkCmdBindDescriptorSets(command_buffer.handle, command_buffer.bind_point,
+                                    handle, 0, 1,
+                                    &descriptor_set, 0, nullptr);
+        }
+
+        void bind(const DescriptorSets &descriptor_sets, const CommandBuffer &command_buffer, u32 first_set_index = 0) {
+            vkCmdBindDescriptorSets(command_buffer.handle, command_buffer.bind_point,
+                                    handle, first_set_index, descriptor_sets.count - first_set_index,
+                                    descriptor_sets.handles, 0, nullptr);
         }
     };
 
@@ -183,7 +287,7 @@ namespace gpu {
             rasterizer.rasterizerDiscardEnable = VK_FALSE;
             rasterizer.polygonMode = is_wireframe ? VK_POLYGON_MODE_LINE : VK_POLYGON_MODE_FILL;
             rasterizer.lineWidth = 1.0f;
-//            rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
+            rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
             rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
 //            rasterizer.depthBiasEnable = VK_FALSE;
 //            rasterizer.depthBiasConstantFactor = 0.0f;
@@ -201,8 +305,8 @@ namespace gpu {
             depth_stencil.depthTestEnable = VK_TRUE;
             depth_stencil.depthWriteEnable = VK_TRUE;
             depth_stencil.depthCompareOp = VK_COMPARE_OP_LESS;
-            depth_stencil.depthBoundsTestEnable = VK_FALSE;
-            depth_stencil.stencilTestEnable = VK_FALSE;
+//            depth_stencil.depthBoundsTestEnable = VK_FALSE;
+//            depth_stencil.stencilTestEnable = VK_FALSE;
 
             VkPipelineColorBlendAttachmentState blend_attachment {};
             blend_attachment.blendEnable = VK_TRUE;
@@ -372,57 +476,4 @@ namespace gpu {
             );
         }
     };
-
-
-
-    struct DescriptorSets {
-        VkDescriptorSet handles[16];
-        u32 count;
-
-        void bind(u32 set_index, const PipelineLayout &set_layout, const CommandBuffer &command_buffer) {
-            vkCmdBindDescriptorSets(command_buffer.handle, command_buffer.bind_point,
-                                    set_layout.handle, 0, 1,
-                                    &handles[set_index], 0, nullptr);
-        }
-    };
-
-    struct DescriptorPool {
-        VkDescriptorPool handle;
-
-        void destroy() {
-            if (handle) {
-                vkDestroyDescriptorPool(device, handle, nullptr);
-                handle = nullptr;
-            }
-        }
-
-        void create(VkDescriptorType type, u32 size) {
-            VkDescriptorPoolSize poolSize{};
-            poolSize.type = type;
-            poolSize.descriptorCount = size;
-
-            VkDescriptorPoolCreateInfo poolInfo{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
-            poolInfo.poolSizeCount = 1;
-            poolInfo.pPoolSizes = &poolSize;
-            poolInfo.maxSets = size;
-
-            VK_CHECK(vkCreateDescriptorPool(device, &poolInfo, nullptr, &handle))
-        }
-
-        void createForUniformBuffers(u32 count) {
-            create(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, count);
-        }
-
-        void allocate(u32 count, const VkDescriptorSetLayout *descriptor_set_layouts, DescriptorSets &out_descriptor_sets) {
-            VkDescriptorSetAllocateInfo allocInfo{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
-            allocInfo.descriptorPool = handle;
-            allocInfo.descriptorSetCount = count;
-            allocInfo.pSetLayouts = descriptor_set_layouts;
-
-            VK_CHECK(vkAllocateDescriptorSets(device, &allocInfo, out_descriptor_sets.handles))
-
-            out_descriptor_sets.count = count;
-        }
-    };
-
 }

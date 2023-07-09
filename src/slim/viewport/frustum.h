@@ -15,8 +15,8 @@ struct Frustum {
         ProjectionType type;
 
         Projection(f32 focal_length, f32 height_over_width, f32 n, f32 f,
-                   ProjectionType projection_type = ProjectionType::PerspectiveDX) :
-                scale{0}, shear{0}, type{projection_type} {
+                   ProjectionType projection_type = ProjectionType::Orthographic) :
+                scale{1}, shear{0}, type{projection_type} {
             update(focal_length, height_over_width, n, f);
         }
         Projection(const Projection &other) : scale{other.scale}, shear{other.shear} {}
@@ -25,15 +25,14 @@ struct Frustum {
         void update(f32 focal_length, f32 height_over_width, f32 n, f32 f) {
             scale.x = focal_length * height_over_width;
             scale.y = focal_length;
-            if (type != ProjectionType::Orthographic) {
-                scale.z = shear = 1.0f / (f - n);
-                if (type == ProjectionType::PerspectiveGL) {
-                    scale.z *= f + n;
-                    shear *= f * n * -2;
-                } else {
-                    scale.z *= f;
-                    shear *= f * -n;
-                }
+            scale.z = 1.0f / (f - n);
+            shear = scale.z * -n;
+            if (type == ProjectionType::PerspectiveDX) {
+                shear *= f;
+                scale.z *= f;
+            } else  if (type == ProjectionType::PerspectiveGL) {
+                shear *= 2 * f;
+                scale.z *= f + n;
             }
         }
 

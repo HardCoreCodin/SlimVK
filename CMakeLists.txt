@@ -32,6 +32,8 @@ add_executable(obj2mesh src/obj2mesh.cpp)
 project(bmp2texture)
 add_executable(bmp2texture src/bmp2texture.cpp)
 
+project(bmp2image)
+add_executable(bmp2image src/bmp2image.cpp)
 
 
 #link_directories(${VULKAN_PATH}/Bin;${VULKAN_PATH}/Lib;)
