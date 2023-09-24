@@ -5,10 +5,10 @@
 
 enum ImageID {
     Floor_Albedo,
-//    Floor_Normal,
-//
-//    Dog_Albedo,
-//    Dog_Normal,
+    Floor_Normal,
+
+    Dog_Albedo,
+    Dog_Normal,
 //
 //    Cathedral_SkyboxColor,
 //    Cathedral_SkyboxRadiance,
@@ -23,7 +23,7 @@ enum ImageID {
 
 ByteColorImage floor_albedo_image;
 ByteColorImage *images = &floor_albedo_image;
-const char *image_file_names[ImageCount]{
+const char *image_file_names[1]{//ImageCount] {
     "floor_albedo.image",
 //    String::getFilePath("floor_normal.image",string_buffers[Floor_Normal],__FILE__),
 //
@@ -39,4 +39,4 @@ const char *image_file_names[ImageCount]{
 //    String::getFilePath("bolonga_irradiance.image",string_buffers[Bolonga_SkyboxIrradiance],__FILE__)
 };
 
-ImagePack<ByteColor> image_pack{ImageCount, images, image_file_names, __FILE__};
+ImagePack<ByteColor> image_pack{1, images, image_file_names, __FILE__};

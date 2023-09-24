@@ -179,6 +179,10 @@ namespace gpu {
             VkDeviceSize offsets[1] = {offset};
             vkCmdBindVertexBuffers(command_buffer.handle, 0, 1, &handle, (VkDeviceSize *) offsets);
         }
+
+        void draw(const GraphicsCommandBuffer &command_buffer, u32 instance_count = 1, i32 first_vertex = 0, u32 first_instance = 0) const {
+            vkCmdDraw(command_buffer.handle, vertex_count, instance_count, first_vertex, first_instance);
+        }
     };
 
     struct UniformBuffer : GraphicsBuffer {
@@ -204,8 +208,6 @@ namespace gpu {
             vkUpdateDescriptorSets(device, 1, &descriptorWrite, 0, nullptr);
         }
     };
-
-    UniformBuffer vertex_uniform_buffers[VULKAN_MAX_FRAMES_IN_FLIGHT];
 
     struct VertexDescriptor {
         u32 vertex_input_stride;

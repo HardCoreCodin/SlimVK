@@ -16,9 +16,9 @@ enum LightFlags {
 
 struct Light {
     Color color{White};
-    vec3 position_or_direction{};
     f32 intensity = 1.0f;
-    u8 flags = Light_IsShadowing;
+    vec3 position_or_direction{};
+    u32 flags = Light_IsShadowing;
 
     INLINE_XPU bool isDirectional() const { return flags & Light_IsDirectional; }
     INLINE_XPU bool isPoint() const { return !(isDirectional()); }
