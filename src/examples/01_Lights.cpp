@@ -3,7 +3,7 @@
 #include "../slim/viewport/navigation.h"
 #include "../slim/viewport/frustum.h"
 #include "../slim/scene/selection.h"
-
+#include "../slim/vulkan/scene/mesh.h"
 //#include "./textures.h"
 
 #include "../slim/app.h"
@@ -56,12 +56,13 @@ struct ExampleVulkanApp : SlimApp {
     enum MesheID { Monkey, Dragon, Dog, MeshCount };
 
     Mesh meshes[MeshCount];
-    char strings[MeshCount][100]{};
+    char mesh_file_string_buffers[MeshCount][100]{};
     String mesh_files[MeshCount] = {
-        String::getFilePath("monkey.mesh",strings[Monkey],__FILE__),
-        String::getFilePath("dragon.mesh",strings[Dragon],__FILE__),
-        String::getFilePath("dog.mesh"   ,strings[Dog   ],__FILE__)
+        String::getFilePath("monkey.mesh",mesh_file_string_buffers[Monkey],__FILE__),
+        String::getFilePath("dragon.mesh",mesh_file_string_buffers[Dragon],__FILE__),
+        String::getFilePath("dog.mesh"   ,mesh_file_string_buffers[Dog   ],__FILE__)
     };
+    MeshGroup mesh_group;
 
     OrientationUsingQuaternion rot{0, -45 * DEG_TO_RAD, 0};
     Geometry monkey{{rot,{6, 4.5, 2}, 0.4f},
@@ -77,8 +78,7 @@ struct ExampleVulkanApp : SlimApp {
                 geometries, cameras, lights, materials, nullptr, nullptr, meshes, mesh_files};
 
 
-    VertexBuffer mesh_vertex_buffers[MeshCount];
-//    IndexBuffer mesh_index_buffers[MeshCount];
+//    VertexBuffer mesh_vertex_buffers[MeshCount];
 
     DescriptorPool descriptor_pool;
     DescriptorSetLayout descriptor_set_layout;
@@ -110,55 +110,14 @@ struct ExampleVulkanApp : SlimApp {
 
         push_constants_layout.addForVertexAndFragment(sizeof(PushConstants));
 
-        for (u32 m = 0; m < MeshCount; m++) {
-            Mesh &mesh = meshes[m];
-            const u32 vertex_count = mesh.triangle_count * 3;
-            mesh_vertex_buffers[m].create(vertex_count, sizeof(TriangleVertex));
-//            mesh_index_buffers[m].create(vertex_count, sizeof(u32));
-
-            TriangleVertex *mesh_vertices = new TriangleVertex[vertex_count];
-//            u32 *mesh_indices = new u32[vertex_count];
-            u32 index = 0;
-            for (u32 f = 0; f < mesh.triangle_count; f++) {
-                for (u32 v = 0; v < 3; v++, index++) {
-//                    mesh_indices[index] = index;
-                    TriangleVertex &vertex = mesh_vertices[index];
-                    vertex.position = mesh.vertex_positions[mesh.vertex_position_indices[f].ids[v]];
-                    if (mesh.uvs_count) vertex.uv = mesh.vertex_uvs[mesh.vertex_uvs_indices[f].ids[v]];
-                    if (mesh.normals_count) vertex.normal = mesh.vertex_normals[mesh.vertex_normal_indices[f].ids[v]];
-                }
-            }
-//
-//            for (size_t v = 0; v < mesh.vertex_count; v++)
-//                mesh_vertices[v].position = mesh.vertex_positions[v];
-//
-//            if (mesh.uvs_count) {
-//                if (mesh.uvs_count != mesh.vertex_count)
-//                    for (size_t f = 0; f < mesh.triangle_count; f++)
-//                        for (size_t v = 0; v < 3; v++)
-//                            mesh_vertices[mesh.vertex_position_indices[f].ids[v]].uv = mesh.vertex_uvs[mesh.vertex_uvs_indices[f].ids[v]];
-//                else
-//                    for (size_t v = 0; v < mesh.vertex_count; v++)
-//                        mesh_vertices[v].uv = mesh.vertex_uvs[v];
-//            }
-//            if (mesh.normals_count) {
-//                if (mesh.normals_count != mesh.vertex_count)
-//                    for (size_t f = 0; f < mesh.triangle_count; f++)
-//                        for (size_t v = 0; v < 3; v++)
-//                            mesh_vertices[mesh.vertex_position_indices[f].ids[v]].normal = mesh.vertex_normals[mesh.vertex_normal_indices[f].ids[v]];
-//                else
-//                    for (size_t v = 0; v < mesh.vertex_count; v++)
-//                        mesh_vertices[v].normal = mesh.vertex_normals[v];
-//            }
-//            for (size_t f = 0, i = 0; f < mesh.triangle_count; f++)
-//                for (size_t v = 0; v < 3; v++)
-//                    mesh_indices[i++] = mesh.vertex_position_indices[f].ids[v];
-
-            mesh_vertex_buffers[m].upload(mesh_vertices);
-//            mesh_index_buffers[m].upload(mesh_indices);
-            delete[] mesh_vertices;
-//            delete[] mesh_indices;
-        }
+//        for (u32 m = 0; m < MeshCount; m++) {
+//            auto *vertices = new TriangleVertex[meshes[m].triangle_count * 3];
+//            loadVertices(meshes[m], vertices);
+//            mesh_vertex_buffers[m].create(meshes[m].triangle_count * 3, sizeof(TriangleVertex));
+//            mesh_vertex_buffers[m].upload(vertices);
+//            delete[] vertices;
+//        }
+        mesh_group.load<TriangleVertex>(mesh_files, MeshCount);
 
         descriptor_set_layout.addForVertexUniformBuffer(0);
         descriptor_set_layout.addForFragmentTexture(1);
@@ -207,17 +166,27 @@ struct ExampleVulkanApp : SlimApp {
         graphics_pipeline.bind(command_buffer);
         graphics_pipeline_layout.bind(descriptor_sets.handles[present::current_frame], command_buffer);
 
-        for (size_t m = 0; m < MeshCount; m++) {
+//        for (size_t m = 0; m < MeshCount; m++) {
+//            model_push_constants.model = Mat4(
+//                geometries[m].transform.orientation,
+//                geometries[m].transform.scale,
+//                geometries[m].transform.position);
+//            graphics_pipeline_layout.pushConstants(command_buffer, push_constants_layout.ranges[0], &model_push_constants);
+//
+//            mesh_vertex_buffers[m].bind(command_buffer);
+//            mesh_vertex_buffers[m].draw(command_buffer);
+//        }
+        mesh_group.vertex_buffer.bind(command_buffer);
+        for (u32 m = 0, first_index = 0; m < MeshCount; m++) {
             model_push_constants.model = Mat4(
                 geometries[m].transform.orientation,
                 geometries[m].transform.scale,
                 geometries[m].transform.position);
             graphics_pipeline_layout.pushConstants(command_buffer, push_constants_layout.ranges[0], &model_push_constants);
 
-            mesh_vertex_buffers[m].bind(command_buffer);
-            mesh_vertex_buffers[m].draw(command_buffer);
-//            mesh_index_buffers[m].bind(command_buffer);
-//            mesh_index_buffers[m].draw(command_buffer);
+            u32 vertex_count = mesh_group.mesh_triangle_counts[m] * 3;
+            mesh_group.vertex_buffer.draw(command_buffer, vertex_count, (i32)first_index);
+            first_index += vertex_count;
         }
     }
 
@@ -250,13 +219,11 @@ struct ExampleVulkanApp : SlimApp {
         graphics_pipeline.destroy();
         graphics_pipeline_layout.destroy();
 
-        for (size_t i = 0; i < VULKAN_MAX_FRAMES_IN_FLIGHT; i++)
-            camera_uniform_buffer[i].destroy();
-
-        for (size_t m = 0; m < MeshCount; m++) {
-            mesh_vertex_buffers[m].destroy();
-//            mesh_index_buffers[m].destroy();
-        }
+        for (size_t i = 0; i < VULKAN_MAX_FRAMES_IN_FLIGHT; i++) camera_uniform_buffer[i].destroy();
+        mesh_group.vertex_buffer.destroy();
+//        for (size_t m = 0; m < MeshCount; m++) {
+//            mesh_vertex_buffers[m].destroy();
+//        }
 
         descriptor_set_layout.destroy();
         descriptor_pool.destroy();

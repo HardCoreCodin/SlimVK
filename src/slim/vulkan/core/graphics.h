@@ -167,11 +167,11 @@ namespace gpu {
     };
 
     struct VertexBuffer : GraphicsBuffer {
-        u32 vertex_count = 0;
+        u32 count = 0;
 
-        bool create(u32 count, u8 vertex_size) {
+        bool create(u32 vertex_count, u8 vertex_size) {
             *this = {};
-            vertex_count = count;
+            count = vertex_count;
             return Buffer::create(BufferType::Vertex, (u64) count * vertex_size);
         }
 
@@ -180,7 +180,8 @@ namespace gpu {
             vkCmdBindVertexBuffers(command_buffer.handle, 0, 1, &handle, (VkDeviceSize *) offsets);
         }
 
-        void draw(const GraphicsCommandBuffer &command_buffer, u32 instance_count = 1, i32 first_vertex = 0, u32 first_instance = 0) const {
+        void draw(const GraphicsCommandBuffer &command_buffer, u32 vertex_count = 0, u32 first_vertex = 0, u32 instance_count = 1, u32 first_instance = 0) const {
+            if (vertex_count == 0) vertex_count = count;
             vkCmdDraw(command_buffer.handle, vertex_count, instance_count, first_vertex, first_instance);
         }
     };
