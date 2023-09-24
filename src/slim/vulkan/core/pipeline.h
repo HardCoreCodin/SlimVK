@@ -67,6 +67,10 @@ namespace gpu {
             add(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT, binding_index);
         }
 
+        void addForFragmentUniformBuffer(u32 binding_index) {
+            add(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_FRAGMENT_BIT, binding_index);
+        }
+
         void addForFragmentTexture(u32 binding_index) {
             add(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, binding_index);
         }
@@ -74,7 +78,7 @@ namespace gpu {
 
     struct DescriptorSets {
         VkDescriptorSet handles[16];
-        u32 count;
+        u32 count = 0;
     };
 
     struct DescriptorPool {
@@ -142,6 +146,20 @@ namespace gpu {
             allocInfo.descriptorPool = handle;
             allocInfo.descriptorSetCount = out_descriptor_sets.count;
             allocInfo.pSetLayouts = descriptor_set_layouts;
+
+            VK_CHECK(vkAllocateDescriptorSets(device, &allocInfo, out_descriptor_sets.handles))
+        }
+
+        void allocate(DescriptorSetLayout *descriptor_set_layouts, DescriptorSets &out_descriptor_sets) {
+            VkDescriptorSetLayout descriptor_set_layout_handles[16];
+            for (size_t i = 0; i < out_descriptor_sets.count; i++) {
+                descriptor_set_layout_handles[i] = descriptor_set_layouts[i].handle;
+            }
+
+            VkDescriptorSetAllocateInfo allocInfo{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
+            allocInfo.descriptorPool = handle;
+            allocInfo.descriptorSetCount = out_descriptor_sets.count;
+            allocInfo.pSetLayouts = descriptor_set_layout_handles;
 
             VK_CHECK(vkAllocateDescriptorSets(device, &allocInfo, out_descriptor_sets.handles))
         }
