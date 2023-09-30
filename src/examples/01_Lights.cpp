@@ -19,9 +19,9 @@ struct ExampleVulkanApp : SlimApp {
     CameraRayProjection projection;
 
     // Scene:
-    Light rim_light{ {1.0f, 0.5f, 0.5f}, 0.9f * 16.0f, {6, 5, 2}};
-    Light glass_light1{ {0.5f, 1.0f, 0.5f}, 8.0f, {-3.3f, 0.6f, -3.0f}};
-    Light glass_light2{ {0.5f, 0.5f, 1.0f}, 8.0f, {-0.6f, 1.75f, -3.15f}};
+    Light rim_light{ {1.0f, 0.5f, 0.5f}, 0.9f * 80.0f, {6, 5, 2}};
+    Light glass_light1{ {0.5f, 1.0f, 0.5f}, 40.0f, {-3.3f, 0.6f, -3.0f}};
+    Light glass_light2{ {0.5f, 0.5f, 1.0f}, 40.0f, {-0.6f, 1.75f, -3.15f}};
     Light *lights{&rim_light};
 
     enum MaterialID { Floor, DogMaterial, Rough, Phong, Blinn, Mirror, Glass, MaterialCount };
@@ -29,7 +29,7 @@ struct ExampleVulkanApp : SlimApp {
     u8 flags{MATERIAL_HAS_NORMAL_MAP | MATERIAL_HAS_ALBEDO_MAP};
     Material floor_material{0.8f, 0.2f, flags,
                             2, {Floor_Albedo, Floor_Normal}};
-    Material dog_material{1.0f, 0.2f, flags,
+    Material dog_material{1.0f, 0.6f, flags,
                           2, {Dog_Albedo, Dog_Normal}};
     Material rough_material{0.8f, 0.7f};
     Material phong_material{1.0f,0.5f,0,0, {},
@@ -53,7 +53,6 @@ struct ExampleVulkanApp : SlimApp {
         IOR_GLASS, F0_Glass_Low
     };
     Material *materials{&floor_material};
-
 
     enum MesheID { Monkey, Dragon, Dog, MeshCount };
 
@@ -93,16 +92,45 @@ struct ExampleVulkanApp : SlimApp {
     PipelineLayout graphics_pipeline_layout;
     GraphicsPipeline graphics_pipeline;
 
-    struct ModelMaterialParams {
+    struct MaterialParams {
+        vec3 albedo;
         float roughness;
+        vec3 F0;
+        float metalness;
+        float normal_strength;
         u32 use_textures;
     };
 
     struct Model {
         alignas(16) mat4 object_to_world;
-        alignas(16) ModelMaterialParams material_params;
+        alignas(16) MaterialParams material_params;
     };
     Model model;
+
+    MaterialParams rough_material_params = {
+        rough_material.albedo,
+        rough_material.roughness,
+        rough_material.reflectivity,
+        rough_material.metalness,
+        1.0f,
+        0
+    };
+    MaterialParams floor_material_params = {
+        floor_material.albedo,
+        floor_material.roughness,
+        floor_material.reflectivity,
+        floor_material.metalness,
+        1.0f,
+        1
+    };
+    MaterialParams dog_material_params = {
+        dog_material.albedo,
+        dog_material.roughness,
+        dog_material.reflectivity,
+        dog_material.metalness,
+        8.0f,
+        3
+    };
 
     struct CameraUniform {
         alignas(16) mat4 view;
@@ -245,11 +273,9 @@ struct ExampleVulkanApp : SlimApp {
 
             graphics_pipeline_layout.bind(textures_descriptor_sets.handles[1], command_buffer, 1);
             if (&geometries[g] == &dog) {
-                model.material_params.use_textures = 1;
-                model.material_params.roughness = 0.85;
+                model.material_params = dog_material_params;
             } else {
-                model.material_params.use_textures = 0;
-                model.material_params.roughness = 0.5;
+                model.material_params = rough_material_params;
             }
             graphics_pipeline_layout.pushConstants(command_buffer, push_constants_layout.ranges[0], &model);
 

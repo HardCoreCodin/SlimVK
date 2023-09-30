@@ -15,7 +15,11 @@ layout(binding = 0) uniform CameraUniform {
 } camera;
 
 struct ModelMaterialParams {
+    vec3 albedo;
     float roughness;
+    vec3 F0;
+    float metalness;
+    float normal_strength;
     uint use_textures;
 };
 
@@ -23,6 +27,7 @@ layout(push_constant) uniform Model {
     mat4 object_to_world;
     ModelMaterialParams material_params;
 } model;
+
 void main() {
     out_position = (model.object_to_world * vec4(in_position, 1.0)).xyz;
     out_normal = (transpose(inverse(model.object_to_world)) * vec4(in_normal, 0.0)).xyz;
