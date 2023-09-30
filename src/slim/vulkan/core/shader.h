@@ -74,7 +74,9 @@ namespace gpu {
     CompiledShader CreateCompiledShaderFromSourceFile(const char* source_file, VkShaderStageFlagBits type, const char* name = "shader", const char* entry_point_name = "main") {
         size_t file_size;
         const char* glsl_source = (char*)os::readEntireFile(source_file, &file_size);
-        return CreateCompiledShaderFromSourceString(glsl_source, type, name, entry_point_name);
+        CompiledShader compiled_shader = CreateCompiledShaderFromSourceString(glsl_source, type, name, entry_point_name);
+        VirtualFree((void*)glsl_source, 0, MEM_RELEASE);
+        return compiled_shader;
     }
 
     CompiledShader CreateCompiledShaderFromBinaryFile(const char* binary_file, VkShaderStageFlagBits type, const char* name = "shader", const char* entry_point_name = "main") {

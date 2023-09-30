@@ -1,7 +1,6 @@
 #pragma once
 
 #include "../slim/serialization/image.h"
-//#include "../slim/core/string.h"
 
 enum ImageID {
     Floor_Albedo,
@@ -22,21 +21,15 @@ enum ImageID {
 };
 
 ByteColorImage floor_albedo_image;
+ByteColorImage floor_normal_image;
+ByteColorImage dog_albedo_image;
+ByteColorImage dog_normal_image;
 ByteColorImage *images = &floor_albedo_image;
-const char *image_file_names[1]{//ImageCount] {
+const char *image_file_names[ImageCount] {
     "floor_albedo.image",
-//    String::getFilePath("floor_normal.image",string_buffers[Floor_Normal],__FILE__),
-//
-//    String::getFilePath("dog_albedo.image",string_buffers[Dog_Albedo],__FILE__),
-//    String::getFilePath("dog_normal.image",string_buffers[Dog_Normal],__FILE__),
-//
-//    String::getFilePath("cathedral_color.image",string_buffers[Cathedral_SkyboxColor],__FILE__),
-//    String::getFilePath("cathedral_radiance.image",string_buffers[Cathedral_SkyboxRadiance],__FILE__),
-//    String::getFilePath("cathedral_irradiance.image",string_buffers[Cathedral_SkyboxIrradiance],__FILE__),
-//
-//    String::getFilePath("bolonga_color.image",string_buffers[Bolonga_SkyboxColor],__FILE__),
-//    String::getFilePath("bolonga_radiance.image",string_buffers[Bolonga_SkyboxRadiance],__FILE__),
-//    String::getFilePath("bolonga_irradiance.image",string_buffers[Bolonga_SkyboxIrradiance],__FILE__)
+    "floor_normal.image",
+    "dog_albedo.image",
+    "dog_normal.image"
 };
 
-ImagePack<ByteColor> image_pack{1, images, image_file_names, __FILE__};
+ImagePack<ByteColor> image_pack{ImageCount, images, image_file_names, __FILE__};

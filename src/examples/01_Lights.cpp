@@ -19,9 +19,9 @@ struct ExampleVulkanApp : SlimApp {
     CameraRayProjection projection;
 
     // Scene:
-    Light rim_light{ {1.0f, 0.25f, 0.25f}, 0.9f * 8.0f, {6, 5, 2}};
-    Light glass_light1{ {0.25f, 1.0f, 0.25f}, 4.0f, {-3.3f, 0.6f, -3.0f}};
-    Light glass_light2{ {0.25f, 0.25f, 1.0f}, 4.0f, {-0.6f, 1.75f, -3.15f}};
+    Light rim_light{ {1.0f, 0.5f, 0.5f}, 0.9f * 16.0f, {6, 5, 2}};
+    Light glass_light1{ {0.5f, 1.0f, 0.5f}, 8.0f, {-3.3f, 0.6f, -3.0f}};
+    Light glass_light2{ {0.5f, 0.5f, 1.0f}, 8.0f, {-0.6f, 1.75f, -3.15f}};
     Light *lights{&rim_light};
 
     enum MaterialID { Floor, DogMaterial, Rough, Phong, Blinn, Mirror, Glass, MaterialCount };
@@ -83,16 +83,24 @@ struct ExampleVulkanApp : SlimApp {
     Selection selection{scene, scene_tracer, projection};
 
 
-    DescriptorPool descriptor_pool;
-    DescriptorSetLayout descriptor_set_layout;
-    DescriptorSets descriptor_sets;
+    DescriptorPool lighting_descriptor_pool;
+    DescriptorPool textures_descriptor_pool;
+    DescriptorSetLayout lighting_descriptor_set_layout;
+    DescriptorSetLayout textures_descriptor_set_layout;
+    DescriptorSets lighting_descriptor_sets;
+    DescriptorSets textures_descriptor_sets;
     PushConstantsLayout push_constants_layout;
     PipelineLayout graphics_pipeline_layout;
     GraphicsPipeline graphics_pipeline;
 
+    struct ModelMaterialParams {
+        float roughness;
+        u32 use_textures;
+    };
+
     struct Model {
         alignas(16) mat4 object_to_world;
-        alignas(16) mat4 object_to_world_inverse_transposed;
+        alignas(16) ModelMaterialParams material_params;
     };
     Model model;
 
@@ -112,60 +120,100 @@ struct ExampleVulkanApp : SlimApp {
     UniformBuffer lights_uniform_buffer[VULKAN_MAX_FRAMES_IN_FLIGHT];
 
     GPUImage floor_albedo;
+    GPUImage floor_normal;
+    GPUImage dog_albedo;
+    GPUImage dog_normal;
+
+    char vertex_shader_source_file[100];
+    char fragment_shader_source_file[100];
 
     enum struct VertexShaderBinding {
         View,
-        Lights,
-        Texture
+        Lights
+    };
+
+    enum struct FragmentShaderBinding {
+        AlbedoTexture,
+        NormalTexture
     };
 
     void OnInit() override {
+        String::getFilePath("vertex_shader.glsl",vertex_shader_source_file,__FILE__);
+        String::getFilePath("fragment_shader.glsl",fragment_shader_source_file,__FILE__);
+
         floor_albedo.createTextureFromPixels(floor_albedo_image.content,
                                              floor_albedo_image.width,
                                              floor_albedo_image.height,
                                              transient_graphics_command_buffer,
-                                             image_file_names[0]);
+                                             image_file_names[Floor_Albedo]);
+
+        floor_normal.createTextureFromPixels(floor_normal_image.content,
+                                             floor_normal_image.width,
+                                             floor_normal_image.height,
+                                             transient_graphics_command_buffer,
+                                             image_file_names[Floor_Normal]);
+
+        dog_albedo.createTextureFromPixels(dog_albedo_image.content,
+                                           dog_albedo_image.width,
+                                           dog_albedo_image.height,
+                                             transient_graphics_command_buffer,
+                                             image_file_names[Dog_Albedo]);
+
+        dog_normal.createTextureFromPixels(dog_normal_image.content,
+                                           dog_normal_image.width,
+                                           dog_normal_image.height,
+                                             transient_graphics_command_buffer,
+                                             image_file_names[Dog_Normal]);
 
         push_constants_layout.addForVertexAndFragment(sizeof(Model));
 
         mesh_group.load<TriangleVertex>(mesh_files, MeshCount);
 
-        descriptor_set_layout.addForVertexUniformBuffer((u32)VertexShaderBinding::View);
-        descriptor_set_layout.addForFragmentUniformBuffer((u32)VertexShaderBinding::Lights);
-        descriptor_set_layout.addForFragmentTexture((u32)VertexShaderBinding::Texture);
-        descriptor_set_layout.create();
+        lighting_descriptor_set_layout.addForVertexUniformBuffer((u32)VertexShaderBinding::View);
+        lighting_descriptor_set_layout.addForFragmentUniformBuffer((u32)VertexShaderBinding::Lights);
+        lighting_descriptor_set_layout.create();
 
-        graphics_pipeline_layout.create(&descriptor_set_layout, &push_constants_layout);
+        textures_descriptor_set_layout.addForFragmentTexture((u32)FragmentShaderBinding::AlbedoTexture);
+        textures_descriptor_set_layout.addForFragmentTexture((u32)FragmentShaderBinding::NormalTexture);
+        textures_descriptor_set_layout.create();
 
-        descriptor_pool.addForUniformBuffers(2);
-        descriptor_pool.addForCombinedImageSamplers(1);
-        descriptor_pool.create(VULKAN_MAX_FRAMES_IN_FLIGHT);
+        graphics_pipeline_layout.create(&lighting_descriptor_set_layout, &push_constants_layout, 2);
 
-        descriptor_sets.count = VULKAN_MAX_FRAMES_IN_FLIGHT;
-        descriptor_pool.allocate(descriptor_set_layout, descriptor_sets);
+        lighting_descriptor_sets.count = VULKAN_MAX_FRAMES_IN_FLIGHT;
+        lighting_descriptor_pool.addForUniformBuffers(2 * VULKAN_MAX_FRAMES_IN_FLIGHT);
+        lighting_descriptor_pool.create(lighting_descriptor_sets.count);
+        lighting_descriptor_pool.allocate(lighting_descriptor_set_layout, lighting_descriptor_sets);
+
+        textures_descriptor_sets.count = 2;
+        textures_descriptor_pool.addForCombinedImageSamplers(textures_descriptor_sets.count * 2);
+        textures_descriptor_pool.create(textures_descriptor_sets.count);
+        textures_descriptor_pool.allocate(textures_descriptor_set_layout, textures_descriptor_sets);
+        floor_albedo.writeSamplerDescriptor(textures_descriptor_sets.handles[0], (u32)FragmentShaderBinding::AlbedoTexture);
+        floor_normal.writeSamplerDescriptor(textures_descriptor_sets.handles[0], (u32)FragmentShaderBinding::NormalTexture);
+        dog_albedo.writeSamplerDescriptor(textures_descriptor_sets.handles[1], (u32)FragmentShaderBinding::AlbedoTexture);
+        dog_normal.writeSamplerDescriptor(textures_descriptor_sets.handles[1], (u32)FragmentShaderBinding::NormalTexture);
 
         for (size_t i = 0; i < VULKAN_MAX_FRAMES_IN_FLIGHT; i++) {
-            auto descriptor_set = descriptor_sets.handles[i];
+            auto descriptor_set = lighting_descriptor_sets.handles[i];
             camera_uniform_buffer[i].create(sizeof(CameraUniform));
             camera_uniform_buffer[i].writeDescriptor(descriptor_set, (u32)VertexShaderBinding::View);
 
             lights_uniform_buffer[i].create(sizeof(LightsUniform));
             lights_uniform_buffer[i].writeDescriptor(descriptor_set, (u32)VertexShaderBinding::Lights);
-
-            floor_albedo.writeSamplerDescriptor(descriptor_set, (u32)VertexShaderBinding::Texture);
         }
-
-        graphics_pipeline.createFromSourceStrings(
+        graphics_pipeline.createFromSourceFiles(
             present::render_pass,
             graphics_pipeline_layout,
             vertex_descriptor,
-            vertex_shader_source_string,
-            fragment_shader_source_string);
+            vertex_shader_source_file,
+            fragment_shader_source_file);
     }
     void OnWindowResize(u16 width, u16 height) override {
         viewport.updateDimensions(width, height);
     }
     void OnUpdate(f32 delta_time) override {
+        scene.updateAABBs();
+        scene.updateBVH();
         if (!mouse::is_captured) selection.manipulate(viewport);
         if (!controls::is_pressed::alt) viewport.updateNavigation(delta_time);
 
@@ -189,17 +237,29 @@ struct ExampleVulkanApp : SlimApp {
 
     void OnRenderMainPass(GraphicsCommandBuffer &command_buffer) override {
         graphics_pipeline.bind(command_buffer);
-        graphics_pipeline_layout.bind(descriptor_sets.handles[present::current_frame], command_buffer);
+        graphics_pipeline_layout.bind(lighting_descriptor_sets.handles[present::current_frame], command_buffer);
         mesh_group.vertex_buffer.bind(command_buffer);
-        for (u32 m = 0, first_index = 0; m < MeshCount; m++) {
-            Transform &xf = geometries[m].transform;
+        for (u32 g = 0; g < scene.counts.geometries; g++) {
+            Transform &xf = geometries[g].transform;
             model.object_to_world = Mat4(xf.orientation, xf.scale, xf.position);
-            model.object_to_world_inverse_transposed = model.object_to_world.inverted().transposed();
+
+            graphics_pipeline_layout.bind(textures_descriptor_sets.handles[1], command_buffer, 1);
+            if (&geometries[g] == &dog) {
+                model.material_params.use_textures = 1;
+                model.material_params.roughness = 0.85;
+            } else {
+                model.material_params.use_textures = 0;
+                model.material_params.roughness = 0.5;
+            }
             graphics_pipeline_layout.pushConstants(command_buffer, push_constants_layout.ranges[0], &model);
 
-            u32 vertex_count = mesh_group.mesh_triangle_counts[m] * 3;
-            mesh_group.vertex_buffer.draw(command_buffer, vertex_count, (i32)first_index);
-            first_index += vertex_count;
+            for (u32 m = 0, first_index = 0; m < MeshCount; m++) {
+                u32 vertex_count = mesh_group.mesh_triangle_counts[m] * 3;
+                if (m == geometries[g].id) {
+                    mesh_group.vertex_buffer.draw(command_buffer, vertex_count, (i32)first_index);
+                    break;
+                } else first_index += vertex_count;
+            }
         }
     }
 
@@ -237,8 +297,15 @@ struct ExampleVulkanApp : SlimApp {
             lights_uniform_buffer[i].destroy();
         }
         mesh_group.vertex_buffer.destroy();
-        descriptor_set_layout.destroy();
-        descriptor_pool.destroy();
+        lighting_descriptor_set_layout.destroy();
+        textures_descriptor_set_layout.destroy();
+        lighting_descriptor_pool.destroy();
+        textures_descriptor_pool.destroy();
+
+        floor_albedo.destroy();
+        floor_normal.destroy();
+        dog_albedo.destroy();
+        dog_normal.destroy();
     }
 };
 

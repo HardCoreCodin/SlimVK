@@ -234,7 +234,7 @@ namespace gpu {
 
         bool createTextureFromPixels(const ByteColor *pixels, u32 image_width, u32 image_height,
                                      const CommandBuffer &command_buffer, const char *texture_name,
-                                     VkFormat format = VK_FORMAT_R8G8B8A8_SRGB, bool mip_map = true) {
+                                     VkFormat format = VK_FORMAT_B8G8R8A8_SRGB, bool mip_map = true) {
             Buffer staging{};
             if (!staging.createAsStaging(sizeof(ByteColor) * image_width * image_height, pixels))
                 return false;

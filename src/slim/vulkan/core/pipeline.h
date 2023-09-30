@@ -201,11 +201,17 @@ namespace gpu {
             }
         }
 
-        void create(DescriptorSetLayout *descriptor_set_layout = nullptr, PushConstantsLayout *push_constants_layout = nullptr) {
+        void create(
+            DescriptorSetLayout *descriptor_set_layout = nullptr,
+            PushConstantsLayout *push_constants_layout = nullptr,
+            u8 descriptor_set_layout_count = 1) {
+            VkDescriptorSetLayout descriptor_set_layout_handles[16];
+            for (u8 i = 0; i < descriptor_set_layout_count; i++)
+                descriptor_set_layout_handles[i] = descriptor_set_layout[i].handle;
             VkPipelineLayoutCreateInfo pipeline_layout_create_info{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
             if (descriptor_set_layout) {
-                pipeline_layout_create_info.setLayoutCount = 1;
-                pipeline_layout_create_info.pSetLayouts = &descriptor_set_layout->handle;
+                pipeline_layout_create_info.setLayoutCount = descriptor_set_layout_count;
+                pipeline_layout_create_info.pSetLayouts = descriptor_set_layout_handles;
             }
             if (push_constants_layout) {
                 pipeline_layout_create_info.pushConstantRangeCount = push_constants_layout->count;
@@ -219,9 +225,9 @@ namespace gpu {
             vkCmdPushConstants(command_buffer.handle, handle, range.stageFlags, range.offset, range.size, data);
         }
 
-        void bind(const VkDescriptorSet &descriptor_set, const CommandBuffer &command_buffer) {
+        void bind(const VkDescriptorSet &descriptor_set, const CommandBuffer &command_buffer, u32 first_set_index = 0) {
             vkCmdBindDescriptorSets(command_buffer.handle, command_buffer.bind_point,
-                                    handle, 0, 1,
+                                    handle, first_set_index, 1,
                                     &descriptor_set, 0, nullptr);
         }
 
