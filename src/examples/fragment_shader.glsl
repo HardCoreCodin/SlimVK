@@ -126,6 +126,12 @@ vec3 shadeFromLight(Light light, vec3 P, vec3 N, vec3 C, vec3 albedo, float roug
     return light.color * (brdf * NdotL * light.intensity / (Ld * Ld));
 }
 
+vec3 toneMapped(vec3 color) {
+    vec3 x = clamp(color - 0.004f, 0.0f, 1.0f);
+    vec3 x2_times_sholder_strength = x * x * 6.2f;
+    return (x2_times_sholder_strength + x*0.5f)/(x2_times_sholder_strength + x*1.7f + 0.06f);
+}
+
 void main() {
     vec3 albedo = model.material_params.albedo;
     if ((model.material_params.use_textures & USE_ALBEDO_TEXTURE) != 0) {
@@ -147,5 +153,5 @@ void main() {
         shadeFromLight(lighting.fill_light, P, N, C, albedo, roughness, F0, metalness) +
         shadeFromLight(lighting.rim_light , P, N, C, albedo, roughness, F0, metalness)
     );
-    out_color = vec4(color, 1.0f);
+    out_color = vec4(toneMapped(color), 1.0f);
 }

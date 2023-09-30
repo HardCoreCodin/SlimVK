@@ -24,10 +24,10 @@ struct ExampleVulkanApp : SlimApp {
     Light glass_light2{ {0.5f, 0.5f, 1.0f}, 40.0f, {-0.6f, 1.75f, -3.15f}};
     Light *lights{&rim_light};
 
-    enum MaterialID { Floor, DogMaterial, Rough, Phong, Blinn, Mirror, Glass, MaterialCount };
+    enum MaterialID { FloorMaterial, DogMaterial, Rough, Phong, Blinn, Mirror, Glass, MaterialCount };
 
     u8 flags{MATERIAL_HAS_NORMAL_MAP | MATERIAL_HAS_ALBEDO_MAP};
-    Material floor_material{0.8f, 0.2f, flags,
+    Material floor_material{0.7f, 0.9f, flags,
                             2, {Floor_Albedo, Floor_Normal}};
     Material dog_material{1.0f, 0.6f, flags,
                           2, {Dog_Albedo, Dog_Normal}};
@@ -54,25 +54,25 @@ struct ExampleVulkanApp : SlimApp {
     };
     Material *materials{&floor_material};
 
-    enum MesheID { Monkey, Dragon, Dog, MeshCount };
+    enum MesheID { Floor, Dog, Dragon, MeshCount };
 
     Mesh meshes[MeshCount];
     char mesh_file_string_buffers[MeshCount][100]{};
     String mesh_files[MeshCount] = {
-        String::getFilePath("monkey.mesh",mesh_file_string_buffers[Monkey],__FILE__),
-        String::getFilePath("dragon.mesh",mesh_file_string_buffers[Dragon],__FILE__),
-        String::getFilePath("dog.mesh"   ,mesh_file_string_buffers[Dog   ],__FILE__)
+        String::getFilePath("cube.mesh",mesh_file_string_buffers[Floor],__FILE__),
+        String::getFilePath("dog.mesh"   ,mesh_file_string_buffers[Dog   ],__FILE__),
+        String::getFilePath("dragon.mesh",mesh_file_string_buffers[Dragon],__FILE__)
     };
     MeshGroup mesh_group;
 
     OrientationUsingQuaternion rot{0, -45 * DEG_TO_RAD, 0};
-    Geometry monkey{{rot,{6, 4.5, 2}, 0.4f},
-                    GeometryType_Mesh, Glass,      Monkey};
-    Geometry dragon{{{},{-2, 2, -3}},
-                    GeometryType_Mesh, Glass,      Dragon};
+    Geometry floor{{{},{}, {20.0f, 1.0f, 20.0f}},
+                    GeometryType_Mesh, Glass,      Floor};
     Geometry dog   {{rot,{4, 2.1f, 3}, 0.8f},
                     GeometryType_Mesh, DogMaterial,   Dog};
-    Geometry *geometries{&monkey};
+    Geometry dragon{{{},{-2, 2, -3}},
+                    GeometryType_Mesh, Glass,      Dragon};
+    Geometry *geometries{&floor};
 
     Scene scene{{3,1,3,
                  MaterialCount,0, MeshCount},
@@ -107,21 +107,13 @@ struct ExampleVulkanApp : SlimApp {
     };
     Model model;
 
-    MaterialParams rough_material_params = {
-        rough_material.albedo,
-        rough_material.roughness,
-        rough_material.reflectivity,
-        rough_material.metalness,
-        1.0f,
-        0
-    };
     MaterialParams floor_material_params = {
         floor_material.albedo,
         floor_material.roughness,
         floor_material.reflectivity,
         floor_material.metalness,
         1.0f,
-        1
+        3
     };
     MaterialParams dog_material_params = {
         dog_material.albedo,
@@ -131,6 +123,15 @@ struct ExampleVulkanApp : SlimApp {
         8.0f,
         3
     };
+    MaterialParams rough_material_params = {
+        rough_material.albedo,
+        rough_material.roughness,
+        rough_material.reflectivity,
+        rough_material.metalness,
+        1.0f,
+        0
+    };
+    MaterialParams *material_params = &floor_material_params;
 
     struct CameraUniform {
         alignas(16) mat4 view;
@@ -270,14 +271,9 @@ struct ExampleVulkanApp : SlimApp {
         for (u32 g = 0; g < scene.counts.geometries; g++) {
             Transform &xf = geometries[g].transform;
             model.object_to_world = Mat4(xf.orientation, xf.scale, xf.position);
-
-            graphics_pipeline_layout.bind(textures_descriptor_sets.handles[1], command_buffer, 1);
-            if (&geometries[g] == &dog) {
-                model.material_params = dog_material_params;
-            } else {
-                model.material_params = rough_material_params;
-            }
+            model.material_params = material_params[g];
             graphics_pipeline_layout.pushConstants(command_buffer, push_constants_layout.ranges[0], &model);
+            if (g != Dragon) graphics_pipeline_layout.bind(textures_descriptor_sets.handles[g], command_buffer, 1);
 
             for (u32 m = 0, first_index = 0; m < MeshCount; m++) {
                 u32 vertex_count = mesh_group.mesh_triangle_counts[m] * 3;
