@@ -23,6 +23,173 @@ struct Triangle {
     f32 uv_coverage, padding;
 };
 
+#define L (-1.0f)
+#define R (+1.0f)
+#define B (-1.0f)
+#define T (+1.0f)
+#define K (-1.0f)
+#define F (+1.0f)
+
+const vec3 CUBE_VERTEX_POSITIONS[CUBE_VERTEX_COUNT] = {
+    {K, B, L},
+    {F, B, L},
+    {F, T, L},
+    {K, T, L},
+    {K, B, R},
+    {F, B, R},
+    {F, T, R},
+    {K, T, R}
+};
+
+#define KBL (0)
+#define FBL (1)
+#define FTL (2)
+#define KTL (3)
+#define KBR (4)
+#define FBR (5)
+#define FTR (6)
+#define KTR (7)
+
+const EdgeVertexIndices CUBE_EDGES[CUBE_TRIANGLE_EDGE_COUNT] = {
+    {KBL, KBR},
+    {KBR, KTR},
+    {KTR, KTL},
+    {KTL, KBL},
+
+    {FBR, FBL},
+    {FBL, FTL},
+    {FTL, FTR},
+    {FTR, FBR},
+
+    {KBL, FBL},
+    {KBR, FBR},
+    {KTL, FTL},
+    {KTR, FTR},
+
+    {KBL, KTR},
+    {KTR, FTL},
+    {FTL, KBL},
+
+    {KBR, FTR},
+    {FTR, FBL},
+    {FBL, KBR}
+};
+
+const EdgeVertexIndices CUBE_QUAD_EDGES[CUBE_QUAD_EDGE_COUNT] = {
+    {KBL, KBR},
+    {KBR, KTR},
+    {KTR, KTL},
+    {KTL, KBL},
+
+    {KBR, FBR},
+    {FBR, FTR},
+    {FTR, KTR},
+    {KTR, KBR},
+
+    {FBR, FBL},
+    {FBL, FTL},
+    {FTL, FTR},
+    {FTR, FBR},
+
+    {FBL, KBL},
+    {KBL, KTL},
+    {KTL, FTL},
+    {FTL, FBL},
+
+    {KTL, KTR},
+    {KTR, FTR},
+    {FTR, FTL},
+    {FTL, KTL},
+
+    {KBR, KBL},
+    {KBL, FBL},
+    {FBL, FBR},
+    {FBR, KBR}
+};
+
+const TriangleVertexIndices CUBE_VERTEX_POSITION_INDICES[CUBE_TRIANGLE_COUNT] = {
+     {KBL, FBL, FTL},
+     {FBL, FBR, FTR},
+     {FBR, KBR, KTR},
+     {KBR, KBL, KTL},
+     {KTL, FTL, FTR},
+     {FBL, KBL, KBR},
+     {KBL, FTL, KTL},
+     {FBL, FTR, FTL},
+     {FBR, KTR, FTR},
+     {KBR, KTL, KTR},
+    {KTL, FTR, KTR},
+    {FBL, KBR, FBR}
+};
+
+const vec3 CUBE_VERTEX_NORMALS[CUBE_NORMAL_COUNT] = {
+    {0, 0, -1},
+    {1, 0, 0},
+    {0, 0, 1},
+    {-1, 0, 0},
+    {0, 1, 0},
+    {0, -1, 0}
+};
+
+const TriangleVertexIndices CUBE_VERTEX_NORMAL_INDICES[CUBE_TRIANGLE_COUNT] = {
+    {0, 0, 0},
+    {1, 1, 1},
+    {2, 2, 2},
+    {3, 3, 3},
+    {4, 4, 4},
+    {5, 5, 5},
+    {0, 0, 0},
+    {1, 1, 1},
+    {2, 2, 2},
+    {3, 3, 3},
+    {4, 4, 4},
+    {5, 5, 5}
+};
+
+const vec2 CUBE_QUAD_VERTEX_UVS[CUBE_QUAD_UV_COUNT] = {
+    {0.0f, 0.0f},
+    {0.0f, 1.0f},
+    {1.0f, 1.0f},
+    {1.0f, 0.0f},
+};
+
+const TriangleVertexIndices CUBE_QUAD_VERTEX_UV_INDICES[CUBE_TRIANGLE_COUNT] = {
+    {0, 1, 2},
+    {0, 1, 2},
+    {0, 1, 2},
+    {0, 1, 2},
+    {0, 1, 2},
+    {0, 1, 2},
+    {0, 2, 3},
+    {0, 2, 3},
+    {0, 2, 3},
+    {0, 2, 3},
+    {0, 2, 3},
+    {0, 2, 3}
+};
+
+#undef L
+#undef R
+#undef B
+#undef T
+#undef K
+#undef F
+
+#undef KBL
+#undef FBL
+#undef FTL
+#undef KTL
+#undef KBR
+#undef FBR
+#undef FTR
+#undef KTR
+
+enum class CubeEdgesType {
+    Full,
+    Quad,
+    BBox
+};
+
 struct Mesh {
     AABB aabb;
     BVH bvh;
@@ -80,98 +247,48 @@ struct Mesh {
             edge_vertex_indices{edge_vertex_indices},
             aabb{aabb}
     {}
-};
 
+    explicit Mesh(CubeEdgesType edges, bool quad_uvs = true) {
+        loadCube(edges, quad_uvs);
+    }
 
-struct CubeMesh : Mesh {
-    const vec3 CUBE_VERTEX_POSITIONS[CUBE_VERTEX_COUNT] = {
-            {-1, -1, -1},
-            {1, -1, -1},
-            {1, 1, -1},
-            {-1, 1, -1},
-            {-1, -1, 1},
-            {1, -1, 1},
-            {1, 1, 1},
-            {-1, 1, 1}
-    };
+    void loadCube(CubeEdgesType edges = CubeEdgesType::BBox, bool quad_uvs = true) {
+        triangle_count = CUBE_TRIANGLE_COUNT;
+        vertex_count = CUBE_VERTEX_COUNT;
+        normals_count = CUBE_NORMAL_COUNT;
 
-    const TriangleVertexIndices CUBE_VERTEX_POSITION_INDICES[CUBE_TRIANGLE_COUNT] = {
-            {0, 1, 2},
-            {1, 5, 6},
-            {5, 4, 7},
-            {4, 0, 3},
-            {3, 2, 6},
-            {1, 0, 4},
-            {0, 2, 3},
-            {1, 6, 2},
-            {5, 7, 6},
-            {4, 3, 7},
-            {3, 6, 7},
-            {1, 4, 5}
-    };
+        vertex_positions = (vec3*)CUBE_VERTEX_POSITIONS;
+        vertex_normals = (vec3*)CUBE_VERTEX_NORMALS;
 
-    const vec3 CUBE_VERTEX_NORMALS[CUBE_NORMAL_COUNT] = {
-            {0, 0, -1},
-            {1, 0, 0},
-            {0, 0, 1},
-            {-1, 0, 0},
-            {0, 1, 0},
-            {0, -1, 0}
-    };
+        vertex_position_indices = (TriangleVertexIndices*)CUBE_VERTEX_POSITION_INDICES;
+        vertex_normal_indices = (TriangleVertexIndices*)CUBE_VERTEX_NORMAL_INDICES;
 
-    const TriangleVertexIndices CUBE_VERTEX_NORMAL_INDICES[CUBE_TRIANGLE_COUNT] = {
-            {0, 0, 0},
-            {1, 1, 1},
-            {2, 2, 2},
-            {3, 3, 3},
-            {4, 4, 4},
-            {5, 5, 5},
-            {0, 0, 0},
-            {1, 1, 1},
-            {2, 2, 2},
-            {3, 3, 3},
-            {4, 4, 4},
-            {5, 5, 5}
-    };
+        if (quad_uvs) {
+            uvs_count = CUBE_QUAD_UV_COUNT;
+            vertex_uvs = (vec2*)CUBE_QUAD_VERTEX_UVS;
+            vertex_uvs_indices = (TriangleVertexIndices*)CUBE_QUAD_VERTEX_UV_INDICES;
+        } else {
+            uvs_count = CUBE_FLAT_UV_COUNT;
+            vertex_uvs = (vec2*)CUBE_QUAD_VERTEX_UVS;
+            vertex_uvs_indices = (TriangleVertexIndices*)CUBE_QUAD_VERTEX_UVS;
+        }
 
-    const vec2 CUBE_VERTEX_UVS[CUBE_UV_COUNT] = {
-            {0.0f, 0.0f},
-            {0.0f, 1.0f},
-            {1.0f, 1.0f},
-            {1.0f, 0.0f},
-    };
+        switch (edges) {
+            case CubeEdgesType::Full:
+                edge_count = CUBE_TRIANGLE_EDGE_COUNT;
+                edge_vertex_indices = (EdgeVertexIndices*)CUBE_EDGES;
+                break;
+            case CubeEdgesType::BBox:
+                edge_count = CUBE_BBOX_EDGE_COUNT;
+                edge_vertex_indices = (EdgeVertexIndices*)CUBE_EDGES;
+                break;
+            case CubeEdgesType::Quad:
+                edge_count = CUBE_QUAD_EDGE_COUNT;
+                edge_vertex_indices = (EdgeVertexIndices*)CUBE_QUAD_EDGES;
+                break;
+        }
 
-    const TriangleVertexIndices CUBE_VERTEX_UV_INDICES[CUBE_TRIANGLE_COUNT] = {
-            {0, 1, 2},
-            {0, 1, 2},
-            {0, 1, 2},
-            {0, 1, 2},
-            {0, 1, 2},
-            {0, 1, 2},
-            {0, 2, 3},
-            {0, 2, 3},
-            {0, 2, 3},
-            {0, 2, 3},
-            {0, 2, 3},
-            {0, 2, 3}
-    };
-
-    CubeMesh() : Mesh{
-            CUBE_TRIANGLE_COUNT,
-            CUBE_VERTEX_COUNT,
-            CUBE_NORMAL_COUNT,
-            CUBE_UV_COUNT,
-            0,
-
-            (vec3*)CUBE_VERTEX_POSITIONS,
-            (vec3*)CUBE_VERTEX_NORMALS,
-            (vec2*)CUBE_VERTEX_UVS,
-
-            (TriangleVertexIndices*)CUBE_VERTEX_POSITION_INDICES,
-            (TriangleVertexIndices*)CUBE_VERTEX_NORMAL_INDICES,
-            (TriangleVertexIndices*)CUBE_VERTEX_UV_INDICES,
-            nullptr,
-
-            {-1 , +1}
-    } {}
+        aabb = {-1 , +1};
+        triangles = nullptr;
+    }
 };

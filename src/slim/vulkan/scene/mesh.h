@@ -4,12 +4,13 @@
 #include "../../serialization/mesh.h"
 
 template <typename Vertex>
-void loadVertices(Mesh &mesh, Vertex *vertices) {
+void loadVertices(Mesh &mesh, Vertex *vertices, bool flip_winding_order = false) {
     for (u32 triangle_index = 0; triangle_index < mesh.triangle_count; triangle_index++) {
         for (u32 vertex_num = 0; vertex_num < 3; vertex_num++, vertices++) {
-            vertices->position = mesh.vertex_positions[mesh.vertex_position_indices[triangle_index].ids[vertex_num]];
-            if (mesh.uvs_count) vertices->uv = mesh.vertex_uvs[mesh.vertex_uvs_indices[triangle_index].ids[vertex_num]];
-            if (mesh.normals_count) vertices->normal = mesh.vertex_normals[mesh.vertex_normal_indices[triangle_index].ids[vertex_num]];
+            u32 v = vertex_num == 0 || !flip_winding_order ? vertex_num : (vertex_num == 2 ? 1 : 2);
+            vertices->position = mesh.vertex_positions[mesh.vertex_position_indices[triangle_index].ids[v]];
+            if (mesh.uvs_count) vertices->uv = mesh.vertex_uvs[mesh.vertex_uvs_indices[triangle_index].ids[v]];
+            if (mesh.normals_count) vertices->normal = mesh.vertex_normals[mesh.vertex_normal_indices[triangle_index].ids[v]];
         }
     }
 }
