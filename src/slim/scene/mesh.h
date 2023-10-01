@@ -248,6 +248,15 @@ struct Mesh {
             aabb{aabb}
     {}
 
+    void loadEdges(Edge *edges) {
+        EdgeVertexIndices *ids = edge_vertex_indices;
+        for (u32 edge_index = 0; edge_index < edge_count; edge_index++, ids++)
+            edges[edge_index] = {
+                vertex_positions[ids->from],
+                vertex_positions[ids->to]
+            };
+    }
+
     explicit Mesh(CubeEdgesType edges, bool quad_uvs = true) {
         loadCube(edges, quad_uvs);
     }

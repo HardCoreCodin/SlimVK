@@ -333,6 +333,7 @@ namespace gpu {
             // Request device features.
             VkPhysicalDeviceFeatures device_features = {};
             device_features.samplerAnisotropy = VK_TRUE;  // Request anistropy
+            device_features.fillModeNonSolid = VK_TRUE;
 
             bool portability_required = false;
             if (available_extensions_count) {

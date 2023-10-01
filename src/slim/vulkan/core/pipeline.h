@@ -299,7 +299,7 @@ namespace gpu {
 
             // Input assembly
             VkPipelineInputAssemblyStateCreateInfo input_assembly = {VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO};
-            input_assembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+            input_assembly.topology = is_wireframe ? VK_PRIMITIVE_TOPOLOGY_LINE_LIST : VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
             input_assembly.primitiveRestartEnable = VK_FALSE;
 
             VkPipelineViewportStateCreateInfo viewportState{VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO};
@@ -477,6 +477,7 @@ namespace gpu {
             const VertexDescriptor &vertex_descriptor,
             const char* vertex_shader_source_string,
             const char* fragment_shader_source_string,
+            bool is_wireframe = false,
             const char *vertex_shader_name = "vertex_shader",
             const char *fragment_shader_name = "fragment_shader",
             const char *vertex_shader_entry_point_name = "main",
@@ -496,7 +497,8 @@ namespace gpu {
                     VK_SHADER_STAGE_FRAGMENT_BIT,
                     fragment_shader_name,
                     fragment_shader_entry_point_name
-                )
+                ),
+                is_wireframe
             );
         }
     };

@@ -69,9 +69,11 @@ struct ExampleVulkanApp : SlimApp {
     };
     MeshGroup mesh_group;
     VertexBuffer floor_mesh_vertex_buffer;
-    TriangleVertex cube_mesh_vertices[CUBE_VERTICES_COUNT];
-    Triangle cube_mesh_triangles[CUBE_TRIANGLE_COUNT];
-    BVHNode cube_mesh_bvh_nodes[CUBE_TRIANGLE_COUNT * 2];
+    VertexBuffer floor_mesh_edge_buffer;
+    TriangleVertex floor_mesh_vertices[CUBE_VERTICES_COUNT];
+    Triangle floor_mesh_triangles[CUBE_TRIANGLE_COUNT];
+    BVHNode floor_mesh_bvh_nodes[CUBE_TRIANGLE_COUNT * 2];
+    Edge floor_mesh_edges[CUBE_BBOX_EDGE_COUNT];
 
     OrientationUsingQuaternion rot{0, -45 * DEG_TO_RAD, 0};
     Geometry dog   {{rot,{4, 2.1f, 3}, 0.8f},
@@ -96,8 +98,11 @@ struct ExampleVulkanApp : SlimApp {
     DescriptorSets lighting_descriptor_sets;
     DescriptorSets textures_descriptor_sets;
     PushConstantsLayout push_constants_layout;
+    PushConstantsLayout line_push_constants_layout;
     PipelineLayout graphics_pipeline_layout;
+    PipelineLayout line_graphics_pipeline_layout;
     GraphicsPipeline graphics_pipeline;
+    GraphicsPipeline line_graphics_pipeline;
 
     struct MaterialParams {
         vec3 albedo;
@@ -113,6 +118,11 @@ struct ExampleVulkanApp : SlimApp {
         alignas(16) MaterialParams material_params;
     };
     Model model;
+    struct LineModel {
+        alignas(16) mat4 mvp;
+        alignas(16) vec3 line_color;
+    };
+    LineModel line_model;
 
     MaterialParams dog_material_params = {
         dog_material.albedo,
@@ -205,16 +215,19 @@ struct ExampleVulkanApp : SlimApp {
 
         mesh_group.load<TriangleVertex>(mesh_files, MeshCount - 1);
 
-        floor_mesh.triangles = cube_mesh_triangles;
-        floor_mesh.bvh.nodes = cube_mesh_bvh_nodes;
+        floor_mesh.triangles = floor_mesh_triangles;
+        floor_mesh.bvh.nodes = floor_mesh_bvh_nodes;
         scene.bvh_builder->buildMesh(floor_mesh);
         scene.counts.meshes = MeshCount;
         scene.updateAABBs();
         scene.updateBVH(2);
 
-        loadVertices(floor_mesh, cube_mesh_vertices);
+        loadVertices(floor_mesh, floor_mesh_vertices);
         floor_mesh_vertex_buffer.create(CUBE_VERTICES_COUNT, sizeof(TriangleVertex));
-        floor_mesh_vertex_buffer.upload(cube_mesh_vertices);
+        floor_mesh_vertex_buffer.upload(floor_mesh_vertices);
+        floor_mesh.loadEdges(floor_mesh_edges);
+        floor_mesh_edge_buffer.create(CUBE_BBOX_EDGE_COUNT * 2, sizeof(vec3));
+        floor_mesh_edge_buffer.upload(floor_mesh_edges);
 
         lighting_descriptor_set_layout.addForVertexUniformBuffer((u32)VertexShaderBinding::View);
         lighting_descriptor_set_layout.addForFragmentUniformBuffer((u32)VertexShaderBinding::Lights);
@@ -230,6 +243,7 @@ struct ExampleVulkanApp : SlimApp {
         lighting_descriptor_pool.addForUniformBuffers(2 * VULKAN_MAX_FRAMES_IN_FLIGHT);
         lighting_descriptor_pool.create(lighting_descriptor_sets.count);
         lighting_descriptor_pool.allocate(lighting_descriptor_set_layout, lighting_descriptor_sets);
+
 
         textures_descriptor_sets.count = 2;
         textures_descriptor_pool.addForCombinedImageSamplers(textures_descriptor_sets.count * 2);
@@ -254,6 +268,16 @@ struct ExampleVulkanApp : SlimApp {
             vertex_descriptor,
             vertex_shader_source_file,
             fragment_shader_source_file);
+
+        line_push_constants_layout.addForVertexAndFragment(sizeof(line_model));
+        line_graphics_pipeline_layout.create(nullptr, &line_push_constants_layout, 0);
+
+        line_graphics_pipeline.createFromSourceStrings(
+            present::render_pass,
+            line_graphics_pipeline_layout,
+            line_vertex_descriptor,
+            line_vertex_shader_source_string,
+            line_fragment_shader_source_string, true);
     }
     void OnWindowResize(u16 width, u16 height) override {
         viewport.updateDimensions(width, height);
@@ -306,6 +330,36 @@ struct ExampleVulkanApp : SlimApp {
                 }
             }
         }
+
+        mat4 vp = camera_uniform_data.view * camera_uniform_data.proj;
+        line_graphics_pipeline.bind(command_buffer);
+//        floor_mesh_edge_buffer.bind(command_buffer);
+//        Transform &xf = geometries[Floor].transform;
+//        line_model.mvp = Mat4(xf.orientation, xf.scale, xf.position) * vp;
+//        line_model.line_color = 1.0f;
+//        line_graphics_pipeline_layout.pushConstants(command_buffer, line_push_constants_layout.ranges[0], &line_model);
+//        floor_mesh_edge_buffer.bind(command_buffer);
+//        floor_mesh_edge_buffer.draw(command_buffer);
+
+        mesh_group.line_vertex_buffer.bind(command_buffer);
+        for (u32 g = 0; g < scene.counts.geometries; g++) {
+            Transform &xf = geometries[g].transform;
+            line_model.mvp = Mat4(xf.orientation, xf.scale, xf.position) * vp;
+            line_model.line_color = 1.0f;
+            line_graphics_pipeline_layout.pushConstants(command_buffer, line_push_constants_layout.ranges[0], &line_model);
+            if (g == Floor) {
+                floor_mesh_edge_buffer.bind(command_buffer);
+                floor_mesh_edge_buffer.draw(command_buffer);
+            } else {
+                for (u32 m = 0, first_index = 0; m < (MeshCount - 1); m++) {
+                    u32 vertex_count = mesh_group.mesh_triangle_counts[m] * 3 * 2;
+                    if (m == geometries[g].id) {
+                        mesh_group.line_vertex_buffer.draw(command_buffer, vertex_count, (i32)first_index);
+                        break;
+                    } else first_index += vertex_count;
+                }
+            }
+        }
     }
 
     void OnMouseButtonDown(mouse::Button &mouse_button) override {
@@ -337,12 +391,17 @@ struct ExampleVulkanApp : SlimApp {
         graphics_pipeline.destroy();
         graphics_pipeline_layout.destroy();
 
+        line_graphics_pipeline.destroy();
+        line_graphics_pipeline_layout.destroy();
+
         for (size_t i = 0; i < VULKAN_MAX_FRAMES_IN_FLIGHT; i++) {
             camera_uniform_buffer[i].destroy();
             lights_uniform_buffer[i].destroy();
         }
         mesh_group.vertex_buffer.destroy();
+        mesh_group.line_vertex_buffer.destroy();
         floor_mesh_vertex_buffer.destroy();
+        floor_mesh_edge_buffer.destroy();
         lighting_descriptor_set_layout.destroy();
         textures_descriptor_set_layout.destroy();
         lighting_descriptor_pool.destroy();

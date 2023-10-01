@@ -17,6 +17,7 @@ void loadVertices(Mesh &mesh, Vertex *vertices, bool flip_winding_order = false)
 
 struct MeshGroup {
     VertexBuffer vertex_buffer;
+    VertexBuffer line_vertex_buffer;
     u32 mesh_count = 0;
     u32 total_triangle_count = 0;
     u32 *mesh_triangle_counts = nullptr;
@@ -62,6 +63,7 @@ struct MeshGroup {
         mesh.edge_vertex_indices = new EdgeVertexIndices[max_triangle_count * 3];
         mesh.bvh.nodes = new BVHNode[max_triangle_count * 2];
         auto *vertices = new TriangleVertex[total_triangle_count * 3];
+        auto *edges = new Edge[total_triangle_count * 3];
 
         for (u32 m = 0; m < mesh_count; m++) {
             file = os::openFileForReading(mesh_files[m].char_ptr);
@@ -70,12 +72,18 @@ struct MeshGroup {
             os::closeFile(file);
 
             loadVertices(mesh, vertices);
+            mesh.loadEdges(edges);
             vertices += mesh.triangle_count * 3;
+            edges += mesh.triangle_count * 3;
         }
         vertices -= total_triangle_count * 3;
+        edges -= total_triangle_count * 3;
 
         vertex_buffer.create(total_triangle_count * 3, sizeof(TriangleVertex));
         vertex_buffer.upload(vertices);
+
+        line_vertex_buffer.create(total_triangle_count * 3 * 2, sizeof(vec3));
+        line_vertex_buffer.upload(edges);
 
         // Cleanup temporary loading-memory:
         delete[] mesh.triangles;
@@ -88,5 +96,6 @@ struct MeshGroup {
         delete[] mesh.edge_vertex_indices;
         delete[] mesh.bvh.nodes;
         delete[] vertices;
+        delete[] edges;
     }
 };
