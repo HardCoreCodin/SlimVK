@@ -5,7 +5,6 @@
 #include "./device.h"
 #include "./present.h"
 #include "./command.h"
-#include "./graphics.h"
 #include "./transfer.h"
 #include "./compute.h"
 #include "./render_target.h"
@@ -13,6 +12,7 @@
 #include "./shader.h"
 #include "./pipeline.h"
 #include "./buffer.h"
+#include "./graphics.h"
 
 
 namespace gpu {
@@ -91,7 +91,8 @@ namespace gpu {
         // by this list.
         for (u32 i = 0; i < present::image_count; i++) present::images_in_flight[i] = nullptr;
 
-        for (u32 i = 0; i < VULKAN_MAX_FRAMES_IN_FLIGHT; i++)graphics_command_pool.allocate(present::_graphics_command_buffers[i],true);
+        for (auto &command_buffer : present::_graphics_command_buffers)
+            graphics_command_pool.allocate(command_buffer,true);
 
         SLIM_LOG_DEBUG("Vulkan command buffers created.");
 

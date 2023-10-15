@@ -248,7 +248,7 @@ struct Mesh {
             aabb{aabb}
     {}
 
-    void loadEdges(Edge *edges) {
+    void loadEdges(Edge *edges) const {
         EdgeVertexIndices *ids = edge_vertex_indices;
         for (u32 edge_index = 0; edge_index < edge_count; edge_index++, ids++)
             edges[edge_index] = {

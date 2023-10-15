@@ -2,6 +2,7 @@
 
 #include "./buffer.h"
 #include "./command.h"
+#include "./framebuffer.h"
 #include "./render_pass.h"
 
 
@@ -125,15 +126,15 @@ namespace gpu {
         }
     };
 
-    struct GraphicsImage : GPUImage {
-        void copyFromBuffer(const Buffer &from_buffer, u32 x = -1, u32 y = -1) const {
-            GPUImage::copyFromBuffer(from_buffer, transient_graphics_command_buffer, x, y);
-        }
-
-        void copyToBuffer(const Buffer &to_buffer, u32 x = -1, u32 y = -1) const {
-            GPUImage::copyToBuffer(to_buffer, transient_graphics_command_buffer, x, y);
-        }
-    };
+//    struct GraphicsImage : GPUImage {
+//        void copyFromBuffer(const Buffer &from_buffer, u32 x = -1, u32 y = -1) const {
+//            GPUImage::copyFromBuffer(from_buffer, transient_graphics_command_buffer, x, y);
+//        }
+//
+//        void copyToBuffer(const Buffer &to_buffer, u32 x = -1, u32 y = -1) const {
+//            GPUImage::copyToBuffer(to_buffer, transient_graphics_command_buffer, x, y);
+//        }
+//    };
 
     struct IndexBuffer : GraphicsBuffer {
         VkIndexType index_type = VK_INDEX_TYPE_UINT32;
@@ -192,7 +193,7 @@ namespace gpu {
             return Buffer::create(BufferType::Uniform, size);
         }
 
-        void writeDescriptor(VkDescriptorSet descriptor_set, u32 binding_index) {
+        void writeDescriptor(VkDescriptorSet descriptor_set, u32 binding_index) const {
             VkDescriptorBufferInfo bufferInfo{};
             bufferInfo.buffer = handle;
             bufferInfo.offset = 0;
@@ -208,11 +209,5 @@ namespace gpu {
 
             vkUpdateDescriptorSets(device, 1, &descriptorWrite, 0, nullptr);
         }
-    };
-
-    struct VertexDescriptor {
-        u32 vertex_input_stride;
-        u32 attribute_count;
-        VertexAttributeType attribute_types[16];
     };
 }

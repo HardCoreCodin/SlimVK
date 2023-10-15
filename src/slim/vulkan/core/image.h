@@ -314,7 +314,7 @@ namespace gpu {
             return true;
         }
 
-        void writeSamplerDescriptor(VkDescriptorSet descriptor_set, u32 binding_index) {
+        void writeDescriptor(VkDescriptorSet descriptor_set, u32 binding_index) const {
             VkDescriptorImageInfo imageInfo{};
             imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
             imageInfo.imageView = view;
@@ -332,7 +332,7 @@ namespace gpu {
         }
 
     private:
-        VkBufferImageCopy getCopyRegion(u32 x = -1, u32 y = -1) const{
+        VkBufferImageCopy getCopyRegion(u32 x = -1, u32 y = -1) const {
             VkBufferImageCopy region = {};
             region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
             region.imageSubresource.layerCount = type == VK_IMAGE_VIEW_TYPE_CUBE ? 6 : 1;

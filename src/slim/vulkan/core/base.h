@@ -2,6 +2,8 @@
 
 #include <vulkan/vulkan.h>
 
+#include <initializer_list>
+
 #ifdef __linux__
 //linux code goes here
 #elif _WIN32
@@ -62,7 +64,6 @@
 // The maximum number of push constant ranges for a shader
 #define VULKAN_SHADER_MAX_PUSH_CONST_RANGES 32
 
-
 namespace gpu {
     VkInstance instance;
     VkPhysicalDevice physical_device;
@@ -95,11 +96,11 @@ namespace gpu {
     VertexAttributeType _i32{VK_FORMAT_R32_SINT, 4};
     VertexAttributeType _u32{VK_FORMAT_R32_UINT, 4};
 
-//    struct VertexAttribute {
-//        VertexAttributeType type;
-//        u8 offset;
-//        u8 binding;
-//    };
+    struct VertexDescriptor {
+        u32 vertex_input_stride;
+        u32 attribute_count;
+        VertexAttributeType attribute_types[16];
+    };
 
     enum class BufferType {
         Unknown,
@@ -144,13 +145,198 @@ namespace gpu {
         struct texture* texture;
     };
 
-    struct CompiledShader {
-        VkShaderStageFlagBits type;
-        const char* name;
-        const char* entry_point_name;
-        uint32_t *code;
-        u64 size;
+    struct Shader {
+        VkShaderStageFlagBits stage = VK_SHADER_STAGE_ALL;
+        char* name = nullptr;
+        char* entry_point_name = nullptr;
+        uint32_t* binary_code = nullptr;
+        u64 binary_size = 0;
+        VkShaderModule handle = nullptr;
+
+        Shader() = default;
+        Shader& operator=(const Shader &other) = delete;
+        bool operator!=(const Shader &other) const;
+        bool operator==(const Shader &other) const;
+
+        bool destroy();
+
+        static const char* getDefaultName(VkShaderStageFlagBits stage);
+
+        bool createFromBinaryData(  const uint32_t* binary_conde,
+                                    u64 binary_size,         VkShaderStageFlagBits stage, const char* name = nullptr, const char* entry_point_name = "main");
+        bool createFromSourceString(const char* glsl_source, VkShaderStageFlagBits stage, const char* name = nullptr, const char* entry_point_name = "main");
+        bool createFromSourceFile(  const char* source_file, VkShaderStageFlagBits stage, const char* name = nullptr, const char* entry_point_name = "main");
+        bool createFromBinaryFile(  const char* binary_file, VkShaderStageFlagBits stage, const char* name = nullptr, const char* entry_point_name = "main");
+
+    private:
+        bool _create();
     };
+
+    struct VertexShader : Shader {
+        VertexDescriptor *vertex_descriptor = nullptr;
+
+        VertexShader() = default;
+
+        bool createFromBinaryData(  const uint32_t* binary_conde,
+                                    u64 binary_size,         VertexDescriptor *vertex_descriptor, const char* name = nullptr, const char* entry_point_name = "main") { this->vertex_descriptor = vertex_descriptor; return Shader::createFromBinaryData(binary_conde, binary_size, VK_SHADER_STAGE_VERTEX_BIT, name, entry_point_name); }
+        bool createFromSourceString(const char* glsl_source, VertexDescriptor *vertex_descriptor, const char* name = nullptr, const char* entry_point_name = "main") { this->vertex_descriptor = vertex_descriptor; return Shader::createFromSourceString(glsl_source, VK_SHADER_STAGE_VERTEX_BIT, name, entry_point_name); }
+        bool createFromSourceFile(  const char* source_file, VertexDescriptor *vertex_descriptor, const char* name = nullptr, const char* entry_point_name = "main") { this->vertex_descriptor = vertex_descriptor; return Shader::createFromSourceFile(source_file, VK_SHADER_STAGE_VERTEX_BIT, name, entry_point_name); }
+        bool createFromBinaryFile(  const char* binary_file, VertexDescriptor *vertex_descriptor, const char* name = nullptr, const char* entry_point_name = "main") { this->vertex_descriptor = vertex_descriptor; return Shader::createFromBinaryFile(binary_file, VK_SHADER_STAGE_VERTEX_BIT, name, entry_point_name); }
+    };
+
+    struct FragmentShader : Shader {
+        FragmentShader() = default;
+
+        bool createFromBinaryData(  const uint32_t* binary_conde,
+                                          u64 binary_size,   const char* name = nullptr, const char* entry_point_name = "main") { return Shader::createFromBinaryData(binary_conde, binary_size, VK_SHADER_STAGE_FRAGMENT_BIT, name, entry_point_name); }
+        bool createFromSourceString(const char* glsl_source, const char* name = nullptr, const char* entry_point_name = "main") { return Shader::createFromSourceString(glsl_source, VK_SHADER_STAGE_FRAGMENT_BIT, name, entry_point_name); }
+        bool createFromSourceFile(  const char* source_file, const char* name = nullptr, const char* entry_point_name = "main") { return Shader::createFromSourceFile(source_file, VK_SHADER_STAGE_FRAGMENT_BIT, name, entry_point_name); }
+        bool createFromBinaryFile(  const char* binary_file, const char* name = nullptr, const char* entry_point_name = "main") { return Shader::createFromBinaryFile(binary_file, VK_SHADER_STAGE_FRAGMENT_BIT, name, entry_point_name); }
+    };
+
+    VkPushConstantRange PushConstantRangeForVertexAndFragment(u8 size, u8 offset = 0) { return {VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, offset, size}; }
+    VkPushConstantRange PushConstantRangeForVertex(           u8 size, u8 offset = 0) { return {VK_SHADER_STAGE_VERTEX_BIT, offset, size}; }
+    VkPushConstantRange PushConstantForFragment(              u8 size, u8 offset = 0) { return {VK_SHADER_STAGE_FRAGMENT_BIT, offset, size}; }
+
+    struct PushConstantSpec {
+        VkPushConstantRange ranges[32];
+        u8 count = 0;
+
+        PushConstantSpec(std::initializer_list<VkPushConstantRange> push_constant_ranges) {
+            count = 0;
+            u32 offset = 0;
+            for (const auto &push_constant_range : push_constant_ranges) {
+                ranges[count] = push_constant_range;
+                ranges[count].offset = offset;
+                offset += ranges[count].size;
+                if (offset >= 128) {
+                    SLIM_LOG_ERROR("Failed to add push constant range, out of space")
+                    break;
+                }
+                if (++count == 32)
+                    break;
+            }
+        }
+
+        bool operator!=(const PushConstantSpec &other) const {
+            if (count != other.count)
+                return false;
+
+            for (u8 i = 0; i < count; i++)
+                if (ranges[i].stageFlags != other.ranges[i].stageFlags ||
+                    ranges[i].size != other.ranges[i].size ||
+                    ranges[i].offset != other.ranges[i].offset)
+                    return true;
+
+            return false;
+        }
+
+        bool operator==(const PushConstantSpec &other) const {
+            return !(*this != other);
+        }
+    };
+
+    VkDescriptorSetLayoutBinding DescriptorSetLayoutBinding(                                   VkShaderStageFlags stages, VkDescriptorType type, u8 array_length = 1) { return {(u32)-1, type, array_length, stages, nullptr};         };
+    VkDescriptorSetLayoutBinding DescriptorSetLayoutBindingForUniformBuffer(                   VkShaderStageFlags stages,                        u8 array_length = 1) { return DescriptorSetLayoutBinding(stages,                              VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, array_length); }
+    VkDescriptorSetLayoutBinding DescriptorSetLayoutBindingForImageAndSampler(                 VkShaderStageFlags stages,                        u8 array_length = 1) { return DescriptorSetLayoutBinding(stages,                              VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, array_length); }
+    VkDescriptorSetLayoutBinding DescriptorSetLayoutBindingForFragmentUniformBuffer(                                                             u8 array_length = 1) { return DescriptorSetLayoutBinding(VK_SHADER_STAGE_FRAGMENT_BIT, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, array_length); }
+    VkDescriptorSetLayoutBinding DescriptorSetLayoutBindingForFragmentImageAndSampler(                                                           u8 array_length = 1) { return DescriptorSetLayoutBinding(VK_SHADER_STAGE_FRAGMENT_BIT, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, array_length); }
+    VkDescriptorSetLayoutBinding DescriptorSetLayoutBindingForVertexUniformBuffer(                                                               u8 array_length = 1) { return DescriptorSetLayoutBinding(VK_SHADER_STAGE_VERTEX_BIT,   VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, array_length); }
+    VkDescriptorSetLayoutBinding DescriptorSetLayoutBindingForVertexImageAndSampler(                                                             u8 array_length = 1) { return DescriptorSetLayoutBinding(VK_SHADER_STAGE_VERTEX_BIT,   VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, array_length); }
+    VkDescriptorSetLayoutBinding DescriptorSetLayoutBindingForVertexAndFragmentUniformBuffer(                                                    u8 array_length = 1) { return DescriptorSetLayoutBinding(VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, array_length); }
+    VkDescriptorSetLayoutBinding DescriptorSetLayoutBindingForVertexAndFragmentImageAndSampler(                                                  u8 array_length = 1) { return DescriptorSetLayoutBinding(VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, array_length); }
+
+    struct DescriptorSetLayoutSpec {
+        VkDescriptorSetLayoutBinding bindings[32];
+        u8 bindings_count = 0;
+
+        DescriptorSetLayoutSpec(std::initializer_list<VkDescriptorSetLayoutBinding> descriptor_set_layout_bindings) {
+            bindings_count = 0;
+            for (const auto &binding : descriptor_set_layout_bindings) {
+                bindings[bindings_count] = binding;
+                bindings[bindings_count].binding = bindings_count;
+                if (++bindings_count == 32)
+                    break;
+            }
+        }
+
+        DescriptorSetLayoutSpec& operator=(const DescriptorSetLayoutSpec& other) {
+            if (&other != this) {
+                bindings_count = other.bindings_count;
+                for (u8 i = 0; i < bindings_count; i++) bindings[i] = other.bindings[i];
+            }
+
+            return *this;
+        }
+
+        bool operator!=(const DescriptorSetLayoutSpec &other) const {
+            if (bindings_count != other.bindings_count)
+                return true;
+            if (bindings == other.bindings)
+                return false;
+
+            for (u8 i = 0; i < bindings_count; i++)
+                if (bindings[i].binding != other.bindings[i].binding ||
+                    bindings[i].descriptorCount != other.bindings[i].descriptorCount ||
+                    bindings[i].descriptorType != other.bindings[i].descriptorType ||
+                    bindings[i].pImmutableSamplers != other.bindings[i].pImmutableSamplers ||
+                    bindings[i].stageFlags != other.bindings[i].stageFlags)
+                    return true;
+
+            return false;
+        }
+
+        bool operator==(const DescriptorSetLayoutSpec &other) const {
+            return !(*this != other);
+        }
+    };
+
+//    struct PipelineLayoutSpec {
+//
+//        DescriptorSetLayoutSpec *descriptor_set_layouts = nullptr;
+//        u8 descriptor_set_layouts_count = 0;
+//        PushConstantSpec *push_constant = nullptr;
+//
+//        bool operator!=(const PipelineLayoutSpec &other) const {
+//            if (descriptor_set_layouts_count != other.descriptor_set_layouts_count)
+//                return true;
+//
+//            if (descriptor_set_layouts != other.descriptor_set_layouts) {
+//                for (u16 i = 0; i < descriptor_set_layouts_count; i++)
+//                    if (descriptor_set_layouts[i] != other.descriptor_set_layouts[i])
+//                        return true;
+//            }
+//
+//            return false;
+//        }
+//
+//        bool operator==(const PipelineLayoutSpec &other) const {
+//            return !(*this != other);
+//        }
+//    };
+//
+//    enum class PipelineFlag : u16 {
+//        IsWireframe = 1
+//    };
+//
+//    struct PipelineSpec {
+//        const PipelineLayoutSpec &layout;
+//
+//        u16 vertex_shader_index = -1;
+//        u16 fragment_shader_index = -1;
+//        u16 flags = 0;
+//
+//        bool operator!=(const PipelineSpec &other) const {
+//            if (layout_index != other.layout_index)
+//                return false;
+//
+//            return false;
+//        }
+//
+//        bool operator==(const PipelineSpec &other) const {
+//            return !(*this != other);
+//        }
+//    };
 
     bool areStringsEqual(const char *src, const char *trg) {
         bool equal = true;

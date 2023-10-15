@@ -2,6 +2,7 @@
 
 #include "./base.h"
 #include "./command.h"
+#include "./device.h"
 
 namespace gpu {
     struct Buffer {

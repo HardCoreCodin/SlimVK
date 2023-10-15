@@ -1,9 +1,11 @@
-#include "./shaders.h"
+//#include "./shaders.h"
 #include "../slim/core/transform.h"
+#include "../slim/math/utils.h"
 #include "../slim/viewport/navigation.h"
 #include "../slim/viewport/frustum.h"
 #include "../slim/scene/selection.h"
 #include "../slim/vulkan/scene/mesh.h"
+//#include "../slim/vulkan/raster/pipeline.h"
 //#include "./textures.h"
 
 #include "../slim/app.h"
@@ -12,7 +14,206 @@
 
 using namespace gpu;
 
-#define CUBE_VERTICES_COUNT (CUBE_TRIANGLE_COUNT * 3)
+namespace line_rendering {
+    const char* vertex_shader_string = R"VERTEX_SHADER(#version 450
+#extension GL_ARB_separate_shader_objects : enable
+
+layout(location = 0) in vec3 in_position;
+layout(location = 0) out vec3 out_position;
+layout(push_constant) uniform PushConstant {
+    mat4 mvp;
+    vec3 color;
+} push_constant;
+
+void main() {
+    gl_Position = push_constant.mvp * vec4(in_position, 1.0);
+    gl_Position.w += 0.00001f;
+})VERTEX_SHADER";
+
+    const char* fragment_shader_string = R"FRAGMENT_SHADER(#version 450
+#extension GL_ARB_separate_shader_objects : enable
+
+layout(location = 0) in vec3 in_position;
+layout(location = 0) out vec4 out_color;
+layout(push_constant) uniform PushConstant {
+    mat4 mvp;
+    vec3 color;
+} push_constant;
+
+void main() {
+    out_color = vec4(push_constant.color, 1.0f);
+})FRAGMENT_SHADER";
+
+    struct PushConstant {
+        alignas(16) mat4 mvp;
+        alignas(16) vec3 color;
+    };
+    PushConstant push_constant;
+    PushConstantSpec push_constant_spec{{PushConstantRangeForVertexAndFragment(sizeof(PushConstant))}};
+
+    VertexDescriptor vertex_descriptor{sizeof(vec3),1, { _vec3 }};
+    VertexShader vertex_shader;
+    FragmentShader fragment_shader;
+
+    PipelineLayout pipeline_layout{};
+    GraphicsPipeline pipeline{};
+
+    bool create(RenderPass *render_pass = &present::render_pass) {
+        if (!vertex_shader.handle &&
+            !vertex_shader.createFromSourceString(vertex_shader_string, &vertex_descriptor, "line_vertex_shader"))
+                return false;
+
+        if (!fragment_shader.handle &&
+            !fragment_shader.createFromSourceString(fragment_shader_string, "line_fragment_shader"))
+                return false;
+
+        if (!pipeline_layout.handle &&
+            !pipeline_layout.create(nullptr, 0, &push_constant_spec))
+                return false;
+
+        if (!pipeline.handle &&
+            !pipeline.create(render_pass->handle, pipeline_layout.handle, vertex_shader, fragment_shader, true))
+                return false;
+
+        return true;
+    }
+
+    void destroy() {
+        pipeline.destroy();
+        pipeline_layout.destroy();
+        fragment_shader.destroy();
+        vertex_shader.destroy();
+    }
+}
+
+namespace default_material {
+    const char* vertex_shader_file_name = "vertex_shader.glsl";
+    const char* fragment_shader_file_name = "fragment_shader.glsl";
+
+    struct MaterialParams {
+        vec3 albedo;
+        float roughness;
+        vec3 F0;
+        float metalness;
+        float normal_strength;
+        u32 use_textures;
+    };
+
+    struct PushConstant {
+        alignas(16) mat4 object_to_world;
+        alignas(16) MaterialParams material_params;
+    };
+    PushConstant push_constant;
+    PushConstantSpec push_constant_spec{{PushConstantRangeForVertexAndFragment(sizeof(PushConstant))}};
+
+    VertexShader vertex_shader;
+    FragmentShader fragment_shader;
+
+    enum struct VertexShaderBinding {
+        View,
+        Lights
+    };
+
+    enum struct FragmentShaderBinding {
+        AlbedoTexture,
+        NormalTexture
+    };
+
+    DescriptorSetLayoutSpec descriptor_set_layout_specs[]{
+        DescriptorSetLayoutSpec({
+                                    DescriptorSetLayoutBindingForVertexUniformBuffer(),
+                                    DescriptorSetLayoutBindingForFragmentUniformBuffer()}),
+        DescriptorSetLayoutSpec({
+             DescriptorSetLayoutBindingForFragmentImageAndSampler(),
+             DescriptorSetLayoutBindingForFragmentImageAndSampler()
+         })
+    };
+    constexpr u8 descriptor_set_layout_count{sizeof(descriptor_set_layout_specs) / sizeof(DescriptorSetLayoutSpec)};
+    DescriptorSetLayout descriptor_set_layouts[descriptor_set_layout_count]{};
+    PipelineLayout pipeline_layout{};
+    GraphicsPipeline pipeline{};
+
+    DescriptorPool textures_descriptor_pool;
+    DescriptorSets textures_descriptor_sets;
+
+    DescriptorPool lighting_descriptor_pool;
+    DescriptorSets lighting_descriptor_sets;
+
+    void createResources(u8 variant_count) {
+        lighting_descriptor_sets.count = VULKAN_MAX_FRAMES_IN_FLIGHT;
+        lighting_descriptor_pool.addForUniformBuffers(2 * VULKAN_MAX_FRAMES_IN_FLIGHT);
+        lighting_descriptor_pool.create(lighting_descriptor_sets.count);
+        lighting_descriptor_pool.allocate(descriptor_set_layouts[0], lighting_descriptor_sets);
+
+        textures_descriptor_sets.count = variant_count;
+        textures_descriptor_pool.addForCombinedImageSamplers(textures_descriptor_sets.count * 2);
+        textures_descriptor_pool.create(textures_descriptor_sets.count);
+        textures_descriptor_pool.allocate(descriptor_set_layouts[1], textures_descriptor_sets);
+    }
+
+    void writeTextureDescriptors(u8 descriptor_set_index, const GPUImage &albedo, const GPUImage &normal) {
+        albedo.writeDescriptor(textures_descriptor_sets.handles[descriptor_set_index], (u32)FragmentShaderBinding::AlbedoTexture);
+        normal.writeDescriptor(textures_descriptor_sets.handles[descriptor_set_index], (u32)FragmentShaderBinding::NormalTexture);
+    }
+
+    void writeUniformDescriptors(u8 descriptor_set_index, const UniformBuffer &camera_uniform_buffer, const UniformBuffer &lights_uniform_buffer) {
+        camera_uniform_buffer.writeDescriptor(lighting_descriptor_sets.handles[descriptor_set_index], (u32)VertexShaderBinding::View);
+        lights_uniform_buffer.writeDescriptor(lighting_descriptor_sets.handles[descriptor_set_index], (u32)VertexShaderBinding::Lights);
+    }
+
+    bool createPipeline(RenderPass *render_pass = &present::render_pass) {
+        char string_buffer[100];
+
+        if (!vertex_shader.handle &&
+            !vertex_shader.createFromSourceFile(String::getFilePath(vertex_shader_file_name, string_buffer, __FILE__).char_ptr, &vertex_descriptor))
+            return false;
+
+        if (!fragment_shader.handle &&
+            !fragment_shader.createFromSourceFile(String::getFilePath(fragment_shader_file_name, string_buffer, __FILE__).char_ptr))
+            return false;
+
+        for (u32 i = 0; i < descriptor_set_layout_count; i++)
+            if (!descriptor_set_layouts[i].handle &&
+                !descriptor_set_layouts[i].create(descriptor_set_layout_specs[i]))
+                return false;
+
+        if (!pipeline_layout.handle &&
+            !pipeline_layout.create(descriptor_set_layouts, descriptor_set_layout_count, &push_constant_spec))
+            return false;
+
+        if (!pipeline.handle &&
+            !pipeline.create(render_pass->handle, pipeline_layout.handle, vertex_shader, fragment_shader))
+            return false;
+
+        return true;
+    }
+
+    void destroy() {
+        pipeline.destroy();
+        pipeline_layout.destroy();
+        for (auto & descriptor_set_layout : descriptor_set_layouts)
+            descriptor_set_layout.destroy();
+
+        lighting_descriptor_pool.destroy();
+        textures_descriptor_pool.destroy();
+        fragment_shader.destroy();
+        vertex_shader.destroy();
+    }
+}
+
+
+
+namespace cube_mesh_data {
+    Triangle triangles[CUBE_TRIANGLE_COUNT];
+    BVHNode bvh_nodes[CUBE_TRIANGLE_COUNT * 2];
+
+    void load(Mesh &mesh, BVHBuilder &bvh_builder) {
+//        mesh.loadCube(CubeEdgesType::BBox, false);
+        mesh.triangles = triangles;
+        mesh.bvh.nodes = bvh_nodes;
+        bvh_builder.buildMesh(mesh);
+    }
+}
 
 struct ExampleVulkanApp : SlimApp {
     Camera camera{{}, {0, 0, -3.5}}, *cameras{&camera};
@@ -60,20 +261,14 @@ struct ExampleVulkanApp : SlimApp {
 
     Mesh dog_mesh;
     Mesh dragon_mesh;
-    Mesh floor_mesh = Mesh(CubeEdgesType::BBox, true);
+    Mesh floor_mesh{CubeEdgesType::BBox, true};
     Mesh *meshes = &dog_mesh;
     char mesh_file_string_buffers[MeshCount - 1][100]{};
     String mesh_files[MeshCount - 1] = {
         String::getFilePath("dog.mesh"   ,mesh_file_string_buffers[Dog   ],__FILE__),
         String::getFilePath("dragon.mesh",mesh_file_string_buffers[Dragon],__FILE__)
     };
-    MeshGroup mesh_group;
-    VertexBuffer floor_mesh_vertex_buffer;
-    VertexBuffer floor_mesh_edge_buffer;
-    TriangleVertex floor_mesh_vertices[CUBE_VERTICES_COUNT];
-    Triangle floor_mesh_triangles[CUBE_TRIANGLE_COUNT];
-    BVHNode floor_mesh_bvh_nodes[CUBE_TRIANGLE_COUNT * 2];
-    Edge floor_mesh_edges[CUBE_BBOX_EDGE_COUNT];
+    GPUMeshGroup mesh_group;
 
     OrientationUsingQuaternion rot{0, -45 * DEG_TO_RAD, 0};
     Geometry dog   {{rot,{4, 2.1f, 3}, 0.8f},
@@ -91,40 +286,8 @@ struct ExampleVulkanApp : SlimApp {
     SceneTracer scene_tracer{scene.counts.geometries, scene.mesh_stack_size};
     Selection selection{scene, scene_tracer, projection};
 
-    DescriptorPool lighting_descriptor_pool;
-    DescriptorPool textures_descriptor_pool;
-    DescriptorSetLayout lighting_descriptor_set_layout;
-    DescriptorSetLayout textures_descriptor_set_layout;
-    DescriptorSets lighting_descriptor_sets;
-    DescriptorSets textures_descriptor_sets;
-    PushConstantsLayout push_constants_layout;
-    PushConstantsLayout line_push_constants_layout;
-    PipelineLayout graphics_pipeline_layout;
-    PipelineLayout line_graphics_pipeline_layout;
-    GraphicsPipeline graphics_pipeline;
-    GraphicsPipeline line_graphics_pipeline;
 
-    struct MaterialParams {
-        vec3 albedo;
-        float roughness;
-        vec3 F0;
-        float metalness;
-        float normal_strength;
-        u32 use_textures;
-    };
-
-    struct Model {
-        alignas(16) mat4 object_to_world;
-        alignas(16) MaterialParams material_params;
-    };
-    Model model;
-    struct LineModel {
-        alignas(16) mat4 mvp;
-        alignas(16) vec3 line_color;
-    };
-    LineModel line_model;
-
-    MaterialParams dog_material_params = {
+    default_material::MaterialParams dog_material_params = {
         dog_material.albedo,
         dog_material.roughness,
         dog_material.reflectivity,
@@ -132,7 +295,7 @@ struct ExampleVulkanApp : SlimApp {
         8.0f,
         3
     };
-    MaterialParams rough_material_params = {
+    default_material::MaterialParams rough_material_params = {
         rough_material.albedo,
         rough_material.roughness,
         rough_material.reflectivity,
@@ -140,7 +303,7 @@ struct ExampleVulkanApp : SlimApp {
         1.0f,
         0
     };
-    MaterialParams floor_material_params = {
+    default_material::MaterialParams floor_material_params = {
         floor_material.albedo,
         floor_material.roughness,
         floor_material.reflectivity,
@@ -148,7 +311,7 @@ struct ExampleVulkanApp : SlimApp {
         1.0f,
         3
     };
-    MaterialParams *material_params = &dog_material_params;
+    default_material::MaterialParams *material_params = &dog_material_params;
 
     struct CameraUniform {
         alignas(16) mat4 view;
@@ -169,23 +332,16 @@ struct ExampleVulkanApp : SlimApp {
     GPUImage floor_normal;
     GPUImage dog_albedo;
     GPUImage dog_normal;
-
-    char vertex_shader_source_file[100];
-    char fragment_shader_source_file[100];
-
-    enum struct VertexShaderBinding {
-        View,
-        Lights
-    };
-
-    enum struct FragmentShaderBinding {
-        AlbedoTexture,
-        NormalTexture
-    };
+    GPUMesh floor_gpu_mesh;
 
     void OnInit() override {
-        String::getFilePath("vertex_shader.glsl",vertex_shader_source_file,__FILE__);
-        String::getFilePath("fragment_shader.glsl",fragment_shader_source_file,__FILE__);
+        cube_mesh_data::load(floor_mesh, *scene.bvh_builder);
+        floor_gpu_mesh.create(floor_mesh);
+        mesh_group.create(mesh_files, MeshCount - 1);
+
+        scene.counts.meshes = MeshCount;
+        scene.updateAABBs();
+        scene.updateBVH(2);
 
         dog_albedo.createTextureFromPixels(dog_albedo_image.content,
                                            dog_albedo_image.width,
@@ -211,73 +367,18 @@ struct ExampleVulkanApp : SlimApp {
                                              transient_graphics_command_buffer,
                                              image_file_names[Floor_Normal]);
 
-        push_constants_layout.addForVertexAndFragment(sizeof(Model));
+        default_material::createPipeline();
+        default_material::createResources(2);
+        default_material::writeTextureDescriptors(0, dog_albedo, dog_normal);
+        default_material::writeTextureDescriptors(1, floor_albedo, floor_normal);
 
-        mesh_group.load<TriangleVertex>(mesh_files, MeshCount - 1);
-
-        floor_mesh.triangles = floor_mesh_triangles;
-        floor_mesh.bvh.nodes = floor_mesh_bvh_nodes;
-        scene.bvh_builder->buildMesh(floor_mesh);
-        scene.counts.meshes = MeshCount;
-        scene.updateAABBs();
-        scene.updateBVH(2);
-
-        loadVertices(floor_mesh, floor_mesh_vertices);
-        floor_mesh_vertex_buffer.create(CUBE_VERTICES_COUNT, sizeof(TriangleVertex));
-        floor_mesh_vertex_buffer.upload(floor_mesh_vertices);
-        floor_mesh.loadEdges(floor_mesh_edges);
-        floor_mesh_edge_buffer.create(CUBE_BBOX_EDGE_COUNT * 2, sizeof(vec3));
-        floor_mesh_edge_buffer.upload(floor_mesh_edges);
-
-        lighting_descriptor_set_layout.addForVertexUniformBuffer((u32)VertexShaderBinding::View);
-        lighting_descriptor_set_layout.addForFragmentUniformBuffer((u32)VertexShaderBinding::Lights);
-        lighting_descriptor_set_layout.create();
-
-        textures_descriptor_set_layout.addForFragmentTexture((u32)FragmentShaderBinding::AlbedoTexture);
-        textures_descriptor_set_layout.addForFragmentTexture((u32)FragmentShaderBinding::NormalTexture);
-        textures_descriptor_set_layout.create();
-
-        graphics_pipeline_layout.create(&lighting_descriptor_set_layout, &push_constants_layout, 2);
-
-        lighting_descriptor_sets.count = VULKAN_MAX_FRAMES_IN_FLIGHT;
-        lighting_descriptor_pool.addForUniformBuffers(2 * VULKAN_MAX_FRAMES_IN_FLIGHT);
-        lighting_descriptor_pool.create(lighting_descriptor_sets.count);
-        lighting_descriptor_pool.allocate(lighting_descriptor_set_layout, lighting_descriptor_sets);
-
-
-        textures_descriptor_sets.count = 2;
-        textures_descriptor_pool.addForCombinedImageSamplers(textures_descriptor_sets.count * 2);
-        textures_descriptor_pool.create(textures_descriptor_sets.count);
-        textures_descriptor_pool.allocate(textures_descriptor_set_layout, textures_descriptor_sets);
-        dog_albedo.writeSamplerDescriptor(textures_descriptor_sets.handles[0], (u32)FragmentShaderBinding::AlbedoTexture);
-        dog_normal.writeSamplerDescriptor(textures_descriptor_sets.handles[0], (u32)FragmentShaderBinding::NormalTexture);
-        floor_albedo.writeSamplerDescriptor(textures_descriptor_sets.handles[1], (u32)FragmentShaderBinding::AlbedoTexture);
-        floor_normal.writeSamplerDescriptor(textures_descriptor_sets.handles[1], (u32)FragmentShaderBinding::NormalTexture);
-
-        for (size_t i = 0; i < VULKAN_MAX_FRAMES_IN_FLIGHT; i++) {
-            auto descriptor_set = lighting_descriptor_sets.handles[i];
+        for (u8 i = 0; i < VULKAN_MAX_FRAMES_IN_FLIGHT; i++) {
             camera_uniform_buffer[i].create(sizeof(CameraUniform));
-            camera_uniform_buffer[i].writeDescriptor(descriptor_set, (u32)VertexShaderBinding::View);
-
             lights_uniform_buffer[i].create(sizeof(LightsUniform));
-            lights_uniform_buffer[i].writeDescriptor(descriptor_set, (u32)VertexShaderBinding::Lights);
+            default_material::writeUniformDescriptors(i, camera_uniform_buffer[i], lights_uniform_buffer[i]);
         }
-        graphics_pipeline.createFromSourceFiles(
-            present::render_pass,
-            graphics_pipeline_layout,
-            vertex_descriptor,
-            vertex_shader_source_file,
-            fragment_shader_source_file);
 
-        line_push_constants_layout.addForVertexAndFragment(sizeof(line_model));
-        line_graphics_pipeline_layout.create(nullptr, &line_push_constants_layout, 0);
-
-        line_graphics_pipeline.createFromSourceStrings(
-            present::render_pass,
-            line_graphics_pipeline_layout,
-            line_vertex_descriptor,
-            line_vertex_shader_source_string,
-            line_fragment_shader_source_string, true);
+        line_rendering::create();
     }
     void OnWindowResize(u16 width, u16 height) override {
         viewport.updateDimensions(width, height);
@@ -307,20 +408,20 @@ struct ExampleVulkanApp : SlimApp {
     }
 
     void OnRenderMainPass(GraphicsCommandBuffer &command_buffer) override {
-        graphics_pipeline.bind(command_buffer);
-        graphics_pipeline_layout.bind(lighting_descriptor_sets.handles[present::current_frame], command_buffer);
+        default_material::pipeline.bind(command_buffer);
+        default_material::pipeline_layout.bind(default_material::lighting_descriptor_sets.handles[present::current_frame], command_buffer);
         mesh_group.vertex_buffer.bind(command_buffer);
         for (u32 g = 0; g < scene.counts.geometries; g++) {
             Transform &xf = geometries[g].transform;
-            model.object_to_world = Mat4(xf.orientation, xf.scale, xf.position);
-            model.material_params = material_params[g];
-            graphics_pipeline_layout.pushConstants(command_buffer, push_constants_layout.ranges[0], &model);
+            default_material::push_constant.object_to_world = Mat4(xf.orientation, xf.scale, xf.position);
+            default_material::push_constant.material_params = material_params[g];
+            default_material::pipeline_layout.pushConstants(command_buffer, default_material::push_constant_spec.ranges[0], &default_material::push_constant);
             if (g == Floor) {
-                graphics_pipeline_layout.bind(textures_descriptor_sets.handles[1], command_buffer, 1);
-                floor_mesh_vertex_buffer.bind(command_buffer);
-                floor_mesh_vertex_buffer.draw(command_buffer);
+                default_material::pipeline_layout.bind(default_material::textures_descriptor_sets.handles[1], command_buffer, 1);
+                floor_gpu_mesh.vertex_buffer.bind(command_buffer);
+                floor_gpu_mesh.vertex_buffer.draw(command_buffer);
             } else {
-                if (g == Dog) graphics_pipeline_layout.bind(textures_descriptor_sets.handles[0], command_buffer, 1);
+                if (g == Dog) default_material::pipeline_layout.bind(default_material::textures_descriptor_sets.handles[0], command_buffer, 1);
                 for (u32 m = 0, first_index = 0; m < (MeshCount - 1); m++) {
                     u32 vertex_count = mesh_group.mesh_triangle_counts[m] * 3;
                     if (m == geometries[g].id) {
@@ -332,7 +433,7 @@ struct ExampleVulkanApp : SlimApp {
         }
 
         mat4 vp = camera_uniform_data.view * camera_uniform_data.proj;
-        line_graphics_pipeline.bind(command_buffer);
+        line_rendering::pipeline.bind(command_buffer);
 //        floor_mesh_edge_buffer.bind(command_buffer);
 //        Transform &xf = geometries[Floor].transform;
 //        line_model.mvp = Mat4(xf.orientation, xf.scale, xf.position) * vp;
@@ -341,20 +442,20 @@ struct ExampleVulkanApp : SlimApp {
 //        floor_mesh_edge_buffer.bind(command_buffer);
 //        floor_mesh_edge_buffer.draw(command_buffer);
 
-        mesh_group.line_vertex_buffer.bind(command_buffer);
+        mesh_group.edge_buffer.bind(command_buffer);
         for (u32 g = 0; g < scene.counts.geometries; g++) {
             Transform &xf = geometries[g].transform;
-            line_model.mvp = Mat4(xf.orientation, xf.scale, xf.position) * vp;
-            line_model.line_color = 1.0f;
-            line_graphics_pipeline_layout.pushConstants(command_buffer, line_push_constants_layout.ranges[0], &line_model);
+            line_rendering::push_constant.mvp = Mat4(xf.orientation, xf.scale, xf.position) * vp;
+            line_rendering::push_constant.color = 1.0f;
+            line_rendering::pipeline_layout.pushConstants(command_buffer, line_rendering::push_constant_spec.ranges[0], &line_rendering::push_constant);
             if (g == Floor) {
-                floor_mesh_edge_buffer.bind(command_buffer);
-                floor_mesh_edge_buffer.draw(command_buffer);
+                floor_gpu_mesh.edge_buffer.bind(command_buffer);
+                floor_gpu_mesh.edge_buffer.draw(command_buffer);
             } else {
                 for (u32 m = 0, first_index = 0; m < (MeshCount - 1); m++) {
                     u32 vertex_count = mesh_group.mesh_triangle_counts[m] * 3 * 2;
                     if (m == geometries[g].id) {
-                        mesh_group.line_vertex_buffer.draw(command_buffer, vertex_count, (i32)first_index);
+                        mesh_group.edge_buffer.draw(command_buffer, vertex_count, (i32)first_index);
                         break;
                     } else first_index += vertex_count;
                 }
@@ -387,25 +488,16 @@ struct ExampleVulkanApp : SlimApp {
     }
 
     void OnShutdown() override {
-        floor_albedo.destroy();
-        graphics_pipeline.destroy();
-        graphics_pipeline_layout.destroy();
-
-        line_graphics_pipeline.destroy();
-        line_graphics_pipeline_layout.destroy();
+        default_material::destroy();
+        line_rendering::destroy();
 
         for (size_t i = 0; i < VULKAN_MAX_FRAMES_IN_FLIGHT; i++) {
             camera_uniform_buffer[i].destroy();
             lights_uniform_buffer[i].destroy();
         }
         mesh_group.vertex_buffer.destroy();
-        mesh_group.line_vertex_buffer.destroy();
-        floor_mesh_vertex_buffer.destroy();
-        floor_mesh_edge_buffer.destroy();
-        lighting_descriptor_set_layout.destroy();
-        textures_descriptor_set_layout.destroy();
-        lighting_descriptor_pool.destroy();
-        textures_descriptor_pool.destroy();
+        mesh_group.edge_buffer.destroy();
+        floor_gpu_mesh.destroy();
 
         floor_albedo.destroy();
         floor_normal.destroy();
