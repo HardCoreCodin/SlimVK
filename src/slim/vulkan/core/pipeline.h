@@ -7,16 +7,24 @@
 namespace gpu {
     struct DescriptorSetLayout {
         VkDescriptorSetLayout handle = {};
+        VkDescriptorSetLayoutBinding bindings[32]{};
+        VkDescriptorSetLayoutCreateInfo info{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+                                             nullptr, 0, 0, bindings};
 
-        bool create(const DescriptorSetLayoutSpec &spec) {
+        DescriptorSetLayout(VkDescriptorSetLayoutBinding* bindings, u8 count, bool monotonic_increment = false) {
+            info.bindingCount = count;
+            for (u8 i = 0; i < count; i++) {
+                this->bindings[i] = bindings[i];
+                if (monotonic_increment)
+                    this->bindings[i].binding = i;
+            }
+        }
+
+        bool create() {
             if (handle)
                 return false;
 
-            VkDescriptorSetLayoutCreateInfo layout_info{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
-            layout_info.bindingCount = spec.bindings_count;
-            layout_info.pBindings = spec.bindings;
-
-            VK_CHECK(vkCreateDescriptorSetLayout(device, &layout_info, nullptr, &handle))
+            VK_CHECK(vkCreateDescriptorSetLayout(device, &info, nullptr, &handle))
 
             return true;
         }
@@ -42,16 +50,48 @@ namespace gpu {
         VkDescriptorPoolSize pool_sizes[16];
         u8 pool_size_count = 0;
 
-        bool create(u32 max_sets) {
+        bool create(u8 descriptor_set_count) {
             if (handle)
                 return false;
 
             VkDescriptorPoolCreateInfo poolInfo{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
             poolInfo.poolSizeCount = pool_size_count;
             poolInfo.pPoolSizes = pool_sizes;
-            poolInfo.maxSets = max_sets;
+            poolInfo.maxSets = descriptor_set_count;
 
             VK_CHECK(vkCreateDescriptorPool(device, &poolInfo, nullptr, &handle))
+
+            return true;
+        }
+
+        bool createAndAllocate(const DescriptorSetLayout &descriptor_set_layout, VkDescriptorSet *descriptor_sets, u8 descriptor_set_count = 1) {
+            if (handle)
+                return false;
+
+            for (u8 i = 0; i < (u8)descriptor_set_layout.info.bindingCount; i++)
+                addForType(descriptor_set_layout.bindings[i].descriptorType,
+                           descriptor_set_layout.bindings[i].descriptorCount);
+
+            if (!create(descriptor_set_count))
+                return false;
+            allocate(descriptor_set_layout, descriptor_sets, descriptor_set_count);
+
+            return true;
+        }
+
+        bool createAndAllocate(DescriptorSetLayout *descriptor_set_layouts, VkDescriptorSet *descriptor_sets, u8 descriptor_set_count = 1) {
+            if (handle)
+                return false;
+
+            for (u8 j = 0; j < descriptor_set_count; j++)
+                for (u8 i = 0; i < (u8)descriptor_set_layouts[j].info.bindingCount; i++)
+                    addForType(descriptor_set_layouts[j].bindings[i].descriptorType,
+                               descriptor_set_layouts[j].bindings[i].descriptorCount);
+
+            if (!create(descriptor_set_count))
+                return false;
+
+            allocate(descriptor_set_layouts, descriptor_sets, descriptor_set_count);
 
             return true;
         }
@@ -91,50 +131,30 @@ namespace gpu {
             addForType(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, descriptor_count);
         }
 
-        void allocate(const VkDescriptorSetLayout *descriptor_set_layouts, DescriptorSets &out_descriptor_sets) {
-            VkDescriptorSetAllocateInfo allocInfo{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
-            allocInfo.descriptorPool = handle;
-            allocInfo.descriptorSetCount = out_descriptor_sets.count;
-            allocInfo.pSetLayouts = descriptor_set_layouts;
-
-            VK_CHECK(vkAllocateDescriptorSets(device, &allocInfo, out_descriptor_sets.handles))
-        }
-
-        void allocate(const DescriptorSetLayout &descriptor_set_layout, DescriptorSets &out_descriptor_sets) {
-            VkDescriptorSetLayout descriptor_set_layouts[16];
-            for (size_t i = 0; i < out_descriptor_sets.count; i++) {
-                descriptor_set_layouts[i] = descriptor_set_layout.handle;
-            }
-
-            VkDescriptorSetAllocateInfo allocInfo{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
-            allocInfo.descriptorPool = handle;
-            allocInfo.descriptorSetCount = out_descriptor_sets.count;
-            allocInfo.pSetLayouts = descriptor_set_layouts;
-
-            VK_CHECK(vkAllocateDescriptorSets(device, &allocInfo, out_descriptor_sets.handles))
-        }
-
-        void allocate(DescriptorSetLayout *descriptor_set_layouts, DescriptorSets &out_descriptor_sets) {
+        void allocate(const DescriptorSetLayout *descriptor_set_layouts, VkDescriptorSet *descriptor_sets, u8 descriptor_set_count = 1) const {
             VkDescriptorSetLayout descriptor_set_layout_handles[16];
-            for (size_t i = 0; i < out_descriptor_sets.count; i++) {
+            for (size_t i = 0; i < descriptor_set_count; i++)
                 descriptor_set_layout_handles[i] = descriptor_set_layouts[i].handle;
-            }
 
             VkDescriptorSetAllocateInfo allocInfo{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
             allocInfo.descriptorPool = handle;
-            allocInfo.descriptorSetCount = out_descriptor_sets.count;
+            allocInfo.descriptorSetCount = descriptor_set_count;
             allocInfo.pSetLayouts = descriptor_set_layout_handles;
 
-            VK_CHECK(vkAllocateDescriptorSets(device, &allocInfo, out_descriptor_sets.handles))
+            VK_CHECK(vkAllocateDescriptorSets(device, &allocInfo, descriptor_sets))
         }
 
-        void allocate(VkDescriptorSetLayout descriptor_set_layout, VkDescriptorSet &out_descriptor_set) {
+        void allocate(const DescriptorSetLayout &descriptor_set_layout, VkDescriptorSet *descriptor_sets, u8 descriptor_set_count = 1) const {
+            VkDescriptorSetLayout descriptor_set_layouts[16];
+            for (size_t i = 0; i < descriptor_set_count; i++)
+                descriptor_set_layouts[i] = descriptor_set_layout.handle;
+
             VkDescriptorSetAllocateInfo allocInfo{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
             allocInfo.descriptorPool = handle;
-            allocInfo.descriptorSetCount = 1;
-            allocInfo.pSetLayouts = &descriptor_set_layout;
+            allocInfo.descriptorSetCount = descriptor_set_count;
+            allocInfo.pSetLayouts = descriptor_set_layouts;
 
-            VK_CHECK(vkAllocateDescriptorSets(device, &allocInfo, &out_descriptor_set))
+            VK_CHECK(vkAllocateDescriptorSets(device, &allocInfo, descriptor_sets))
         }
     };
 
@@ -142,20 +162,16 @@ namespace gpu {
         VkPipelineLayout handle = {};
 
         bool create(
-            DescriptorSetLayout descriptor_set_layouts[] = nullptr,
+            VkDescriptorSetLayout descriptor_set_layouts[] = nullptr,
             u32 descriptor_set_layout_count = 0,
             PushConstantSpec *push_constant_spec = nullptr
         ) {
             if (handle)
                 return false;
 
-            VkDescriptorSetLayout descriptor_set_layout_handles[32]{};
-            for (u32 i = 0; i < descriptor_set_layout_count; i++)
-                descriptor_set_layout_handles[i] = descriptor_set_layouts[i].handle;
-
             VkPipelineLayoutCreateInfo pipeline_layout_create_info{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
             pipeline_layout_create_info.setLayoutCount = descriptor_set_layout_count;
-            pipeline_layout_create_info.pSetLayouts = descriptor_set_layout_handles;
+            pipeline_layout_create_info.pSetLayouts = descriptor_set_layouts;
             pipeline_layout_create_info.pushConstantRangeCount = push_constant_spec ? push_constant_spec->count : 0;
             pipeline_layout_create_info.pPushConstantRanges = push_constant_spec ? push_constant_spec->ranges : nullptr;
 
@@ -178,7 +194,7 @@ namespace gpu {
             vkCmdPushConstants(command_buffer.handle, handle, range.stageFlags, range.offset, range.size, data);
         }
 
-        void bind(const VkDescriptorSet &descriptor_set, const CommandBuffer &command_buffer, u32 first_set_index = 0) {
+        void bind(VkDescriptorSet descriptor_set, const CommandBuffer &command_buffer, u32 first_set_index = 0) {
             vkCmdBindDescriptorSets(command_buffer.handle, command_buffer.bind_point,
                                     handle, first_set_index, 1,
                                     &descriptor_set, 0, nullptr);
