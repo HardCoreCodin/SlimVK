@@ -1383,6 +1383,7 @@ namespace controls {
 
 namespace os {
     void* getMemory(u64 size, u64 base = 0);
+    void freeMemory(void* memory);
     void setWindowTitle(char* str);
     void setWindowCapture(bool on);
     void setCursorVisibility(bool on);
@@ -1565,6 +1566,13 @@ namespace memory {
             void* current_address = address;
             address += size;
             return current_address;
+        }
+
+        void releaseMemory() {
+            address -= occupied;
+            os::freeMemory(address);
+            capacity = occupied = 0;
+            address = nullptr;
         }
     };
 }

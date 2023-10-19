@@ -215,6 +215,10 @@ void* os::getMemory(u64 size, u64 base) {
     return VirtualAlloc((LPVOID)base, (SIZE_T)size, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
 }
 
+void os::freeMemory(void* memory) {
+    VirtualFree((void*)memory, 0, MEM_RELEASE);
+}
+
 void os::closeFile(void *handle) { return win32_closeFile(handle); }
 void* os::openFileForReading(const char* path) { return win32_openFileForReading(path); }
 void* os::openFileForWriting(const char* path) { return win32_openFileForWriting(path); }

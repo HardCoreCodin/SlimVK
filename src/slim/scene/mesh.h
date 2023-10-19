@@ -23,6 +23,224 @@ struct Triangle {
     f32 uv_coverage, padding;
 };
 
+Triangle CUBE_TRIANGLES[] = { // Triangles:
+    {
+        {0.000000f, -0.000000f, 1.000000f, 0.500000f, -0.500000f, -0.000000f, 0.000000f, 0.500000f, 0.000000f},
+        { 1.000000f, -1.000000f, -1.000000f},
+        { 1.000000f, 0.000000f, 0.000000f},
+        { 1.000000f, 0.000000f, 0.000000f},
+        { 1.000000f, 0.000000f, 0.000000f},
+        { 1.000000f, 0.000000f, 0.000000f},
+        { 0.000000f, 0.000000f},
+        { 0.000000f, 1.000000f},
+        { 1.000000f, 1.000000f},
+        0.250000f
+    },
+    {
+        {0.000000f, -0.000000f, 1.000000f, 0.500000f, 0.000000f, -0.000000f, -0.500000f, 0.500000f, 0.000000f},
+        { 1.000000f, -1.000000f, -1.000000f},
+        { 1.000000f, 0.000000f, 0.000000f},
+        { 1.000000f, 0.000000f, 0.000000f},
+        { 1.000000f, 0.000000f, 0.000000f},
+        { 1.000000f, 0.000000f, 0.000000f},
+        { 0.000000f, 0.000000f},
+        { 1.000000f, 1.000000f},
+        { 1.000000f, 0.000000f},
+        0.250000f
+    },
+    {
+        {0.500000f, -0.500000f, 0.000000f, 0.500000f, 0.000000f, -0.000000f, 0.000000f, 0.000000f, 1.000000f},
+        { 1.000000f, -1.000000f, 1.000000f},
+        { 0.000000f, -0.000000f, 1.000000f},
+        { 0.000000f, 0.000000f, 1.000000f},
+        { 0.000000f, 0.000000f, 1.000000f},
+        { 0.000000f, 0.000000f, 1.000000f},
+        { 0.000000f, 0.000000f},
+        { 1.000000f, 1.000000f},
+        { 1.000000f, 0.000000f},
+        0.250000f
+    },
+    {
+        {0.000000f, -0.500000f, 0.000000f, 0.500000f, -0.500000f, -0.000000f, -0.000000f, 0.000000f, 1.000000f},
+        { 1.000000f, -1.000000f, 1.000000f},
+        { 0.000000f, 0.000000f, 1.000000f},
+        { 0.000000f, 0.000000f, 1.000000f},
+        { 0.000000f, 0.000000f, 1.000000f},
+        { 0.000000f, 0.000000f, 1.000000f},
+        { 0.000000f, 0.000000f},
+        { 0.000000f, 1.000000f},
+        { 1.000000f, 1.000000f},
+        0.250000f
+    },
+    {
+        {0.000000f, 0.500000f, 0.000000f, -0.000000f, 0.000000f, 1.000000f, 0.500000f, -0.500000f, 0.000000f},
+        { -1.000000f, 1.000000f, -1.000000f},
+        { 0.000000f, 1.000000f, 0.000000f},
+        { 0.000000f, 1.000000f, 0.000000f},
+        { 0.000000f, 1.000000f, 0.000000f},
+        { 0.000000f, 1.000000f, 0.000000f},
+        { 0.000000f, 0.000000f},
+        { 0.000000f, 1.000000f},
+        { 1.000000f, 1.000000f},
+        0.250000f
+    },
+    {
+        {-0.500000f, 0.500000f, 0.000000f, -0.000000f, 0.000000f, 1.000000f, 0.500000f, -0.000000f, 0.000000f},
+        { -1.000000f, 1.000000f, -1.000000f},
+        { 0.000000f, 1.000000f, 0.000000f},
+        { 0.000000f, 1.000000f, 0.000000f},
+        { 0.000000f, 1.000000f, 0.000000f},
+        { 0.000000f, 1.000000f, 0.000000f},
+        { 0.000000f, 0.000000f},
+        { 1.000000f, 1.000000f},
+        { 1.000000f, 0.000000f},
+        0.250000f
+    },
+    {
+        {0.500000f, -0.500000f, 0.000000f, 0.000000f, 0.000000f, -1.000000f, 0.500000f, 0.000000f, 0.000000f},
+        { 1.000000f, -1.000000f, -1.000000f},
+        { 0.000000f, -1.000000f, 0.000000f},
+        { 0.000000f, -1.000000f, 0.000000f},
+        { 0.000000f, -1.000000f, 0.000000f},
+        { 0.000000f, -1.000000f, 0.000000f},
+        { 0.000000f, 0.000000f},
+        { 1.000000f, 1.000000f},
+        { 1.000000f, 0.000000f},
+        0.250000f
+    },
+    {
+        {0.000000f, -0.500000f, 0.000000f, 0.000000f, -0.000000f, -1.000000f, 0.500000f, -0.500000f, 0.000000f},
+        { 1.000000f, -1.000000f, -1.000000f},
+        { 0.000000f, -1.000000f, 0.000000f},
+        { 0.000000f, -1.000000f, 0.000000f},
+        { 0.000000f, -1.000000f, 0.000000f},
+        { 0.000000f, -1.000000f, 0.000000f},
+        { 0.000000f, 0.000000f},
+        { 0.000000f, 1.000000f},
+        { 1.000000f, 1.000000f},
+        0.250000f
+    },
+    {
+        {-0.500000f, 0.500000f, 0.000000f, 0.500000f, -0.000000f, -0.000000f, 0.000000f, -0.000000f, -1.000000f},
+        { -1.000000f, -1.000000f, -1.000000f},
+        { 0.000000f, 0.000000f, -1.000000f},
+        { 0.000000f, 0.000000f, -1.000000f},
+        { 0.000000f, 0.000000f, -1.000000f},
+        { 0.000000f, 0.000000f, -1.000000f},
+        { 0.000000f, 0.000000f},
+        { 1.000000f, 1.000000f},
+        { 1.000000f, 0.000000f},
+        0.250000f
+    },
+    {
+        {-0.000000f, 0.500000f, 0.000000f, 0.500000f, -0.500000f, -0.000000f, 0.000000f, -0.000000f, -1.000000f},
+        { -1.000000f, -1.000000f, -1.000000f},
+        { 0.000000f, 0.000000f, -1.000000f},
+        { 0.000000f, 0.000000f, -1.000000f},
+        { 0.000000f, 0.000000f, -1.000000f},
+        { 0.000000f, 0.000000f, -1.000000f},
+        { 0.000000f, 0.000000f},
+        { 0.000000f, 1.000000f},
+        { 1.000000f, 1.000000f},
+        0.250000f
+    },
+    {
+        {0.000000f, -0.000000f, -1.000000f, 0.500000f, 0.000000f, 0.000000f, 0.500000f, -0.500000f, 0.000000f},
+        { -1.000000f, -1.000000f, 1.000000f},
+        { -1.000000f, 0.000000f, 0.000000f},
+        { -1.000000f, 0.000000f, 0.000000f},
+        { -1.000000f, 0.000000f, 0.000000f},
+        { -1.000000f, 0.000000f, 0.000000f},
+        { 0.000000f, 0.000000f},
+        { 1.000000f, 1.000000f},
+        { 1.000000f, 0.000000f},
+        0.250000f
+    },
+    {
+        {0.000000f, -0.000000f, -1.000000f, 0.500000f, -0.500000f, -0.000000f, 0.000000f, -0.500000f, 0.000000f},
+        { -1.000000f, -1.000000f, 1.000000f},
+        { -1.000000f, 0.000000f, 0.000000f},
+        { -1.000000f, 0.000000f, 0.000000f},
+        { -1.000000f, 0.000000f, 0.000000f},
+        { -1.000000f, 0.000000f, 0.000000f},
+        { 0.000000f, 0.000000f},
+        { 0.000000f, 1.000000f},
+        { 1.000000f, 1.000000f},
+        0.250000f
+    }
+};
+
+//memory::MonotonicAllocator temp_allocator{BVHBuilder::getSizeInBytes(CUBE_TRIANGLE_COUNT)};
+//        BVHBuilder builder{CUBE_TRIANGLE_COUNT, &temp_allocator};
+//        builder.buildMesh(floor_mesh);
+//        temp_allocator.releaseMemory();
+//        printf("\n{ // Triangles:\n");
+//        for (u32 i = 0; i < floor_mesh.triangle_count; i++) {
+//            auto& t{floor_mesh.triangles[i]};
+//            auto& m{t.local_to_tangent};
+//            auto& p{t.position};
+//            auto& n{t.normal};
+//            auto& n1{t.n1};
+//            auto& n2{t.n2};
+//            auto& n3{t.n3};
+//            auto& u1{t.uv1};
+//            auto& u2{t.uv2};
+//            auto& u3{t.uv3};
+//            auto& c{t.uv_coverage};
+//            auto& pd{t.padding};
+//            printf("{\n"
+//                   "    {%ff, %ff, %ff,\n"
+//                   "     %ff, %ff, %ff,\n"
+//                   "     %ff, %ff, %ff},\n"
+//                   "    { %ff, %ff, %ff},\n"
+//                   "    { %ff, %ff, %ff},\n"
+//                   "    { %ff, %ff, %ff},\n"
+//                   "    { %ff, %ff, %ff},\n"
+//                   "    { %ff, %ff, %ff},\n"
+//                   "    { %ff, %ff},\n"
+//                   "    { %ff, %ff},\n"
+//                   "    { %ff, %ff},\n"
+//                   "    %ff\n"
+//                   "},\n",
+//                   m.X.x, m.X.y, m.X.z,
+//                   m.Y.x, m.Y.y, m.Y.z,
+//                   m.Z.x, m.Z.y, m.Z.z,
+//                   p.x, p.y, p.z,
+//                   n.x, n.y, n.z,
+//                   n1.x, n1.y, n1.z,
+//                   n2.x, n2.y, n2.z,
+//                   n3.x, n3.y, n3.z,
+//                   u1.x, u1.y,
+//                   u2.x, u2.y,
+//                   u3.x, u3.y,
+//                   c);
+//        }
+//        printf("}\n\n");
+
+BVHNode CUBE_BVH_NODES[] = { // BVHNodes:
+    {{{-1.000100f, -1.000100f, -1.000100f}, {1.000100f, 1.000100f, 1.000100f}}, 1, 0, 0, 0},
+    {{{-1.000100f, -1.000000f, -1.000000f}, {-0.999900f, 1.000000f, 1.000000f}}, 10, 2, 1, 0},
+    {{{-1.000000f, -1.000100f, -1.000100f}, {1.000100f, 1.000100f, 1.000100f}}, 3, 0, 1, 0},
+    {{{-1.000000f, -1.000100f, -1.000100f}, {1.000000f, 1.000100f, 1.000100f}}, 5, 0, 2, 0},
+    {{{0.999900f, -1.000000f, -1.000000f}, {1.000100f, 1.000000f, 1.000000f}}, 0, 2, 2, 0},
+    {{{-1.000000f, -1.000000f, -1.000100f}, {1.000000f, 1.000000f, -0.999900f}}, 8, 2, 3, 0},
+    {{{-1.000000f, -1.000100f, -1.000000f}, {1.000000f, 1.000100f, 1.000100f}}, 7, 0, 3, 0},
+    {{{-1.000000f, -1.000100f, -1.000000f}, {1.000000f, 1.000100f, 1.000000f}}, 9, 0, 4, 0},
+    {{{-1.000000f, -1.000000f, 0.999900f}, {1.000000f, 1.000000f, 1.000100f}}, 2, 2, 4, 0},
+    {{{-1.000000f, -1.000100f, -1.000000f}, {1.000000f, -0.999900f, 1.000000f}}, 6, 2, 5, 0},
+    {{{-1.000000f, 0.999900f, -1.000000f}, {1.000000f, 1.000100f, 1.000000f}}, 4, 2, 5, 0}
+};
+//        printf("\n\nnode_count=%lu, height=%u\n", floor_mesh.bvh.node_count, floor_mesh.bvh.height);
+//        printf("\n{ // BVHNodes:\n");
+//        for (u32 ni = 0; ni < floor_mesh.bvh.node_count; ni++) {
+//            auto& n{floor_mesh.bvh.nodes[ni]};
+//            printf("   {{{%ff, %ff, %ff}, {%ff, %ff, %ff}}, %lu, %u, %u, %u},\n",
+//                   n.aabb.min.x, n.aabb.min.y, n.aabb.min.z,
+//                   n.aabb.max.x, n.aabb.max.y, n.aabb.max.z,
+//                   n.first_index, n.leaf_count, n.depth, n.flags);
+//        }
+//        printf("}\n\n");
+
 #define L (-1.0f)
 #define R (+1.0f)
 #define B (-1.0f)
@@ -30,7 +248,7 @@ struct Triangle {
 #define K (-1.0f)
 #define F (+1.0f)
 
-const vec3 CUBE_VERTEX_POSITIONS[CUBE_VERTEX_COUNT] = {
+const vec3 CUBE_VERTEX_POSITIONS[] = {
     {K, B, L},
     {F, B, L},
     {F, T, L},
@@ -50,7 +268,7 @@ const vec3 CUBE_VERTEX_POSITIONS[CUBE_VERTEX_COUNT] = {
 #define FTR (6)
 #define KTR (7)
 
-const EdgeVertexIndices CUBE_EDGES[CUBE_TRIANGLE_EDGE_COUNT] = {
+const EdgeVertexIndices CUBE_EDGES[] = {
     {KBL, KBR},
     {KBR, KTR},
     {KTR, KTL},
@@ -75,7 +293,7 @@ const EdgeVertexIndices CUBE_EDGES[CUBE_TRIANGLE_EDGE_COUNT] = {
     {FBL, KBR}
 };
 
-const EdgeVertexIndices CUBE_QUAD_EDGES[CUBE_QUAD_EDGE_COUNT] = {
+const EdgeVertexIndices CUBE_QUAD_EDGES[] = {
     {KBL, KBR},
     {KBR, KTR},
     {KTR, KTL},
@@ -107,7 +325,7 @@ const EdgeVertexIndices CUBE_QUAD_EDGES[CUBE_QUAD_EDGE_COUNT] = {
     {FBR, KBR}
 };
 
-const TriangleVertexIndices CUBE_VERTEX_POSITION_INDICES[CUBE_TRIANGLE_COUNT] = {
+const TriangleVertexIndices CUBE_VERTEX_POSITION_INDICES[] = {
      {KBL, FBL, FTL},
      {FBL, FBR, FTR},
      {FBR, KBR, KTR},
@@ -122,7 +340,7 @@ const TriangleVertexIndices CUBE_VERTEX_POSITION_INDICES[CUBE_TRIANGLE_COUNT] = 
     {FBL, KBR, FBR}
 };
 
-const vec3 CUBE_VERTEX_NORMALS[CUBE_NORMAL_COUNT] = {
+const vec3 CUBE_VERTEX_NORMALS[] = {
     {0, 0, -1},
     {1, 0, 0},
     {0, 0, 1},
@@ -131,7 +349,7 @@ const vec3 CUBE_VERTEX_NORMALS[CUBE_NORMAL_COUNT] = {
     {0, -1, 0}
 };
 
-const TriangleVertexIndices CUBE_VERTEX_NORMAL_INDICES[CUBE_TRIANGLE_COUNT] = {
+const TriangleVertexIndices CUBE_VERTEX_NORMAL_INDICES[] = {
     {0, 0, 0},
     {1, 1, 1},
     {2, 2, 2},
@@ -146,14 +364,14 @@ const TriangleVertexIndices CUBE_VERTEX_NORMAL_INDICES[CUBE_TRIANGLE_COUNT] = {
     {5, 5, 5}
 };
 
-const vec2 CUBE_QUAD_VERTEX_UVS[CUBE_QUAD_UV_COUNT] = {
+const vec2 CUBE_QUAD_VERTEX_UVS[] = {
     {0.0f, 0.0f},
     {0.0f, 1.0f},
     {1.0f, 1.0f},
     {1.0f, 0.0f},
 };
 
-const TriangleVertexIndices CUBE_QUAD_VERTEX_UV_INDICES[CUBE_TRIANGLE_COUNT] = {
+const TriangleVertexIndices CUBE_QUAD_VERTEX_UV_INDICES[] = {
     {0, 1, 2},
     {0, 1, 2},
     {0, 1, 2},
@@ -298,6 +516,9 @@ struct Mesh {
         }
 
         aabb = {-1 , +1};
-        triangles = nullptr;
+        triangles = CUBE_TRIANGLES;
+        bvh.nodes = CUBE_BVH_NODES;
+        bvh.node_count = 11;
+        bvh.height = 5;
     }
 };

@@ -14,17 +14,6 @@
 
 using namespace gpu;
 
-namespace cube_mesh_data {
-    Triangle triangles[CUBE_TRIANGLE_COUNT];
-    BVHNode bvh_nodes[CUBE_TRIANGLE_COUNT * 2];
-
-    void load(Mesh &mesh, BVHBuilder &bvh_builder) {
-        mesh.triangles = triangles;
-        mesh.bvh.nodes = bvh_nodes;
-        bvh_builder.buildMesh(mesh);
-    }
-}
-
 char vertex_shader_file[100];
 char fragment_shader_file[100];
 String shader_files[]{
@@ -137,7 +126,6 @@ struct ExampleVulkanApp : SlimApp {
     GPUMesh floor_gpu_mesh;
 
     void OnInit() override {
-        cube_mesh_data::load(floor_mesh, *scene.bvh_builder);
         floor_gpu_mesh.create(floor_mesh);
         mesh_group.create(mesh_files, MeshCount - 1);
 
