@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../slim/serialization/image.h"
+#include "../slim/serialization/texture.h"
 
 enum ImageID {
     Floor_Albedo,
@@ -33,3 +34,17 @@ const char *image_file_names[ImageCount] {
 };
 
 ImagePack<ByteColor> image_pack{ImageCount, images, image_file_names, __FILE__};
+
+Texture floor_albedo_texture;
+Texture floor_normal_texture;
+Texture dog_albedo_texture;
+Texture dog_normal_texture;
+Texture *textures = &floor_albedo_texture;
+const char *texture_file_names[ImageCount] {
+    "floor_albedo.texture",
+    "floor_normal.texture",
+    "dog_albedo.texture",
+    "dog_normal.texture"
+};
+
+TexturePack texture_pack{ImageCount, textures, texture_file_names, __FILE__};

@@ -3,26 +3,26 @@
 #include "../slim/viewport/navigation.h"
 #include "../slim/viewport/frustum.h"
 #include "../slim/scene/selection.h"
-#include "../slim/vulkan/scene/mesh.h"
+#include "../slim/draw/selection.h"
 #include "../slim/vulkan/raster/pipeline.h"
-#include "../slim/vulkan/raster/line_render.h"
 #include "../slim/vulkan/raster/default_material.h"
 
 #include "../slim/app.h"
 
 #include "./images.h"
 
+#define HAS_ALBEDO_MAP 1
+#define HAS_NORMAL_MAP 1
+#define DRAW_DEPTH 4
+#define DRAW_POSITION 8
+#define DRAW_NORMAL 16
+#define DRAW_UVS 32
+#define DRAW_ALBEDO 64
+
 using namespace gpu;
 
-char vertex_shader_file[100];
-char fragment_shader_file[100];
-String shader_files[]{
-    String::getFilePath("vertex_shader.glsl", vertex_shader_file, __FILE__),
-    String::getFilePath("fragment_shader.glsl", fragment_shader_file, __FILE__)
-};
-
 struct ExampleVulkanApp : SlimApp {
-    Camera camera{{}, {0, 0, -3.5}}, *cameras{&camera};
+    Camera camera{{-25 * DEG_TO_RAD, 0, 0}, {0, 7, -11}}, *cameras{&camera};
     Canvas canvas;
     Viewport viewport{canvas, &camera};
     CameraRayProjection camera_ray_projection;
@@ -79,7 +79,7 @@ struct ExampleVulkanApp : SlimApp {
     OrientationUsingQuaternion rot{0, -45 * DEG_TO_RAD, 0};
     Geometry dog   {{rot,{4, 2.1f, 3}, 0.8f},
                     GeometryType_Mesh, DogMaterial,   Dog};
-    Geometry dragon{{{},{-2, 2, -3}},
+    Geometry dragon{{{},{-12, 2, -3}},
                     GeometryType_Mesh, Glass,      Dragon};
     Geometry floor{{{},{0, -3, 0}, {20.0f, 1.0f, 20.0f}},
                    GeometryType_Mesh, Glass,      Floor};
@@ -92,6 +92,8 @@ struct ExampleVulkanApp : SlimApp {
     SceneTracer scene_tracer{scene.counts.geometries, scene.mesh_stack_size};
     Selection selection{scene, scene_tracer, camera_ray_projection};
 
+    u8 debug_flags = DRAW_NORMAL;
+    u8 debug_maps = 0;
 
     default_material::MaterialParams dog_material_params = {
         dog_material.albedo,
@@ -99,7 +101,7 @@ struct ExampleVulkanApp : SlimApp {
         dog_material.reflectivity,
         dog_material.metalness,
         8.0f,
-        3
+        HAS_ALBEDO_MAP | HAS_NORMAL_MAP
     };
     default_material::MaterialParams rough_material_params = {
         rough_material.albedo,
@@ -115,7 +117,7 @@ struct ExampleVulkanApp : SlimApp {
         floor_material.reflectivity,
         floor_material.metalness,
         1.0f,
-        3
+        HAS_ALBEDO_MAP | HAS_NORMAL_MAP
     };
     default_material::MaterialParams *material_params = &dog_material_params;
 
@@ -133,6 +135,21 @@ struct ExampleVulkanApp : SlimApp {
         scene.updateAABBs();
         scene.updateBVH(2);
 
+        for (u8 i = 0; i < ImageCount; i++) {
+            TextureMip& texture{textures[i].mips[0]};
+            ByteColorImage& image{images[i]};
+            for (u32 y = 0; y < image.height; y++) {
+                for (u32 x = 0; x < image.width; x++) {
+                    ByteColor &pixel{image.content[image.width * y + x]};
+                    TexelQuad &texel{texture.texel_quads[image.width * y + y + x]};
+                    pixel.R = texel.R.BR;
+                    pixel.G = texel.G.BR;
+                    pixel.B = texel.B.BR;
+                    pixel.A = 255;
+                }
+            }
+        }
+
         dog_albedo.createTextureFromPixels(dog_albedo_image.content,
                                            dog_albedo_image.width,
                                            dog_albedo_image.height,
@@ -143,7 +160,7 @@ struct ExampleVulkanApp : SlimApp {
                                            dog_normal_image.width,
                                            dog_normal_image.height,
                                              transient_graphics_command_buffer,
-                                             image_file_names[Dog_Normal]);
+                                             image_file_names[Dog_Normal], VK_FORMAT_B8G8R8A8_UNORM);
 
         floor_albedo.createTextureFromPixels(floor_albedo_image.content,
                                              floor_albedo_image.width,
@@ -155,10 +172,10 @@ struct ExampleVulkanApp : SlimApp {
                                              floor_normal_image.width,
                                              floor_normal_image.height,
                                              transient_graphics_command_buffer,
-                                             image_file_names[Floor_Normal]);
+                                             image_file_names[Floor_Normal], VK_FORMAT_B8G8R8A8_UNORM);
 
         raster_render_pipeline::create();
-        default_material::create(vertex_shader_file, fragment_shader_file, &floor_albedo, 4);
+        default_material::create(&floor_albedo, 4);
         line_rendering::create();
     }
 
@@ -169,19 +186,21 @@ struct ExampleVulkanApp : SlimApp {
     void OnUpdate(f32 delta_time) override {
         scene.updateAABBs();
         scene.updateBVH();
+        camera_ray_projection.reset(camera, viewport.dimensions, false);
+
         if (!mouse::is_captured) selection.manipulate(viewport);
         if (!controls::is_pressed::alt) viewport.updateNavigation(delta_time);
-
-        camera_ray_projection.reset(camera, viewport.dimensions, false);
 
         raster_render_pipeline::update(scene, viewport);
     }
 
     void OnRenderMainPass(GraphicsCommandBuffer &command_buffer) override {
-        default_material::bind(command_buffer);
+        default_material::bind(command_buffer, debug_flags);
         mesh_group.vertex_buffer.bind(command_buffer);
         for (u32 g = 0; g < scene.counts.geometries; g++) {
-            default_material::setModel(command_buffer, Mat4(geometries[g].transform), material_params[g]);
+            default_material::setModel(command_buffer, geometries[g].transform,
+                                       material_params[g],
+                                       (material_params[g].flags & debug_maps) | debug_flags);
             if (g == Floor) {
                 default_material::bindTextures(command_buffer, 0);
                 floor_gpu_mesh.vertex_buffer.bind(command_buffer);
@@ -198,25 +217,27 @@ struct ExampleVulkanApp : SlimApp {
             }
         }
 
-        line_rendering::pipeline.bind(command_buffer);
-        mesh_group.edge_buffer.bind(command_buffer);
         mat4 view_projection = raster_render_pipeline::camera_uniform_data.view * raster_render_pipeline::camera_uniform_data.proj;
-        for (u32 g = 0; g < scene.counts.geometries; g++) {
-            line_rendering::setModel(command_buffer, Mat4(geometries[g].transform) * view_projection);
+        if (controls::is_pressed::alt) drawSelection(selection, command_buffer, view_projection, scene.meshes);
 
-            if (g == Floor) {
-                floor_gpu_mesh.edge_buffer.bind(command_buffer);
-                floor_gpu_mesh.edge_buffer.draw(command_buffer);
-            } else {
-                for (u32 m = 0, first_index = 0; m < (MeshCount - 1); m++) {
-                    u32 vertex_count = mesh_group.mesh_triangle_counts[m] * 3 * 2;
-                    if (m == geometries[g].id) {
-                        mesh_group.edge_buffer.draw(command_buffer, vertex_count, (i32)first_index);
-                        break;
-                    } else first_index += vertex_count;
-                }
-            }
-        }
+//        line_rendering::pipeline.bind(command_buffer);
+//        mesh_group.edge_buffer.bind(command_buffer);
+//        for (u32 g = 0; g < scene.counts.geometries; g++) {
+//            line_rendering::setModel(command_buffer, Mat4(geometries[g].transform) * view_projection);
+//
+//            if (g == Floor) {
+//                floor_gpu_mesh.edge_buffer.bind(command_buffer);
+//                floor_gpu_mesh.edge_buffer.draw(command_buffer);
+//            } else {
+//                for (u32 m = 0, first_index = 0; m < (MeshCount - 1); m++) {
+//                    u32 vertex_count = mesh_group.mesh_triangle_counts[m] * 3 * 2;
+//                    if (m == geometries[g].id) {
+//                        mesh_group.edge_buffer.draw(command_buffer, vertex_count, (i32)first_index);
+//                        break;
+//                    } else first_index += vertex_count;
+//                }
+//            }
+//        }
     }
 
     void OnMouseButtonDown(mouse::Button &mouse_button) override {
@@ -243,6 +264,16 @@ struct ExampleVulkanApp : SlimApp {
         if (key == 'S') move.backward = is_pressed;
         if (key == 'A') move.left     = is_pressed;
         if (key == 'D') move.right    = is_pressed;
+        if (!is_pressed) {
+            if (key == '1') {debug_flags = 0;             debug_maps = 0; }
+            if (key == '2') {debug_flags = DRAW_DEPTH;    debug_maps = 0; }
+            if (key == '3') {debug_flags = DRAW_POSITION; debug_maps = 0; }
+            if (key == '4') {debug_flags = DRAW_UVS;      debug_maps = 0; }
+            if (key == '5') {debug_flags = DRAW_NORMAL;   debug_maps = 0; }
+            if (key == '7') {debug_flags = DRAW_ALBEDO;   debug_maps = 0; }
+            if (key == '6') {debug_flags = DRAW_NORMAL;   debug_maps = HAS_NORMAL_MAP; }
+            if (key == '8') {debug_flags = DRAW_ALBEDO;   debug_maps = HAS_ALBEDO_MAP; }
+        }
     }
 
     void OnShutdown() override {
