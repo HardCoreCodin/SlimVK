@@ -29,7 +29,7 @@ layout(location = 3) in vec2 in_uv;
 layout(location = 0) out vec4 out_color;
 
 layout(binding = 1) uniform LightingUniform {
-    vec3 camera_position;
+    vec4 camera_position_and_IBL_intensity;
     Light key_light;
     Light fill_light;
     Light rim_light;
@@ -37,6 +37,8 @@ layout(binding = 1) uniform LightingUniform {
 
 layout(set = 1, binding = 0) uniform sampler2D albedo_texture;
 layout(set = 1, binding = 1) uniform sampler2D normal_texture;
+layout(set = 2, binding = 0) uniform samplerCube radiance_map;
+layout(set = 2, binding = 1) uniform samplerCube irradiance_map;
 
 struct ModelMaterialParams {
     vec3 albedo;
@@ -57,6 +59,12 @@ layout(push_constant) uniform Model {
     ModelTransform transform;
     ModelMaterialParams material_params;
 } model;
+
+
+struct Radiance {
+	vec3 Fd;
+	vec3 Fs;
+};
 
 vec3 rotateNormal(vec3 Ng, vec4 normal_sample, float magnitude) {
     vec3 Nm = normalize(normal_sample.xzy * 2.0f - 1.0f);
@@ -102,25 +110,25 @@ vec3 cookTorrance(float roughness, float NdotL, float NdotV, float NdotH, vec3 F
     )));
 }
 
-vec3 BRDF(vec3 albedo, float roughness, vec3 F0, float metalness, vec3 V, vec3 N, float NdotL, vec3 L) {
-    vec3 Fs = vec3(0.0);
-    vec3 Fd = albedo * ((1.0f - metalness) * ONE_OVER_PI);
 
-    float NdotV = dot(N, V);
-    if (NdotV <= 0.0f ||
-        roughness <= 0)
-        return Fs + Fd;
-
-    vec3 H = normalize(L + V);
-    float NdotH = clamp(dot(N, H), 0.0, 1.0);
-    float HdotL = clamp(dot(H, L), 0.0, 1.0);
-    vec3 F = schlickFresnel(HdotL, F0);
-    Fs = cookTorrance(roughness, NdotL, NdotV, NdotH, F);
-    Fd *= 1.0f - F;
-    return Fs + Fd;
+Radiance BRDF(vec3 albedo, vec3 V, vec3 N, float NdotL, vec3 L) {
+	Radiance rad;
+    rad.Fs = vec3(0.0);
+    rad.Fd = albedo * ((1.0f - model.material_params.metalness) * ONE_OVER_PI);
+	float NdotV = dot(N, V);
+    if (NdotV > 0.0f && model.material_params.roughness > 0) {
+		vec3 H = normalize(L + V);
+		float NdotH = clamp(dot(N, H), 0.0, 1.0);
+		float HdotL = clamp(dot(H, L), 0.0, 1.0);
+		vec3 F = schlickFresnel(HdotL, model.material_params.F0);
+		rad.Fs = cookTorrance(model.material_params.roughness, NdotL, NdotV, NdotH, F);
+		rad.Fd *= 1.0f - F;
+	}
+    
+	return rad;
 }
 
-vec3 shadeFromLight(Light light, vec3 P, vec3 N, vec3 C, vec3 albedo, float roughness, vec3 F0, float metalness) {
+vec3 shadeFromLight(Light light, vec3 P, vec3 N, vec3 C, vec3 albedo) {
     vec3 L = light.position - P;
     float NdotL = dot(L, N);
     if (NdotL <= 0.f)
@@ -130,8 +138,8 @@ vec3 shadeFromLight(Light light, vec3 P, vec3 N, vec3 C, vec3 albedo, float roug
     NdotL /= Ld;
     vec3 V = normalize(C - P);
 
-    vec3 brdf = BRDF(albedo, roughness, F0, metalness, V, N, NdotL, L);
-    return light.color * (brdf * NdotL * light.intensity / (Ld * Ld));
+    Radiance rad = BRDF(albedo, V, N, NdotL, L);
+    return light.color * ((rad.Fd + rad.Fs) * NdotL * light.intensity / (Ld * Ld));
 }
 
 vec3 toneMapped(vec3 color) {
@@ -145,11 +153,8 @@ void main() {
     if ((model.material_params.flags & HAS_ALBEDO_MAP) != 0) {
         albedo *= texture(albedo_texture, in_uv).rgb;
     }
-    const vec3 C = lighting.camera_position;
+    const vec3 C = lighting.camera_position_and_IBL_intensity.xyz;
     const vec3 P = in_position;
-    const vec3 F0 = model.material_params.F0;
-    const float roughness = model.material_params.roughness;
-    const float metalness = model.material_params.metalness;
     vec3 N = normalize(in_normal);
     if ((model.material_params.flags & HAS_NORMAL_MAP) != 0) {
         //vec3 T = normalize(in_tangent);
@@ -158,10 +163,20 @@ void main() {
         N = normalize(rotateNormal(N, texture(normal_texture, in_uv), model.material_params.normal_strength));
     }
     vec3 color = (
-        shadeFromLight(lighting.key_light , P, N, C, albedo, roughness, F0, metalness) +
-        shadeFromLight(lighting.fill_light, P, N, C, albedo, roughness, F0, metalness) +
-        shadeFromLight(lighting.rim_light , P, N, C, albedo, roughness, F0, metalness)
+        shadeFromLight(lighting.key_light , P, N, C, albedo) +
+        shadeFromLight(lighting.fill_light, P, N, C, albedo) +
+        shadeFromLight(lighting.rim_light , P, N, C, albedo)
     );
+    
+    const float IBL_intensity = lighting.camera_position_and_IBL_intensity.w;
+    if (IBL_intensity != 0.0f) {
+        vec3 V = normalize(C - P);
+		Radiance rad = BRDF(albedo, V, N, 1.0f, N);
+		rad.Fd *= texture(irradiance_map, N).rgb;
+		rad.Fs *= texture(radiance_map, normalize(reflect(V, N))).rgb;
+		color += (rad.Fd + rad.Fs) * IBL_intensity;
+	} 
+    
     out_color = vec4(toneMapped(color), 1.0f);
 }
 

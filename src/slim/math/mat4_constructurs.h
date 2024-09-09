@@ -10,8 +10,8 @@ mat4 Mat4(const Transform &transform) { return Mat4(transform.orientation, trans
 mat4 Mat4(const Projection &projection) {
     return {
         projection.scale.x, 0, 0, 0,
-        0, -projection.scale.y, 0, 0,
-        0, 0, projection.scale.z, 1,
-        0, 0, projection.shear, 0
+        0, projection.scale.y, 0, 0,
+        0, 0, projection.scale.z, projection.params.is_perspective ? 1.0f : 0.0f,
+        0, 0, projection.shear, projection.params.is_perspective ? 0.0f : 1.0f
     };
 }

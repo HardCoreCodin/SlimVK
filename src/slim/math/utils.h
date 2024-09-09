@@ -24,6 +24,14 @@ INLINE_XPU mat3 Mat3(const quat &q) {
     return mat;
 }
 
+INLINE_XPU mat3 Mat3(const mat4 &m) {
+    return {
+        Vec3(m.X),
+        Vec3(m.Y),
+        Vec3(m.Z)
+    };
+}
+
 INLINE_XPU quat Quat(const mat3 &m) {
     f32 fourXSquaredMinus1 = m.X.x - m.Y.y - m.Z.z;
     f32 fourYSquaredMinus1 = m.Y.y - m.X.x - m.Z.z;
@@ -120,4 +128,20 @@ INLINE_XPU mat4 Mat4(const mat3 &rotation, const vec3 &position) {
         Vec4(rotation.Z),
         Vec4(position, 1.0f)
     };
+}
+
+INLINE_XPU mat4 lookAt(const vec3 &eye, const vec3 &center = {}, const vec3 &up = vec3::Y)
+{
+    mat3 m;
+    m.Z = (center - eye).normalized();
+    m.Y = up;
+    m.X = m.Y.cross( m.Z).normalized();
+    m.Y = m.Z.cross( m.X).normalized();
+
+    mat4 Matrix = Mat4(m);
+    Matrix.W.x = -m.X.dot(eye);
+    Matrix.W.y = -m.Y.dot(eye);
+    Matrix.W.z = -m.Z.dot(eye);
+
+    return Matrix;
 }

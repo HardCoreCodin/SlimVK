@@ -126,8 +126,9 @@ struct ExampleVulkanApp : SlimApp {
 
     GPUImage *textures = nullptr;
     GPUImage *skybox_maps = nullptr;
-    GPUImage *radiance_maps = nullptr;
-    GPUImage *irradiance_maps = nullptr;
+    GPUImage *ibl_maps = nullptr;
+
+    u32 skybox_index = 0;
 
     void initTextures(CubeMapSet *cube_map_sets, u32 cube_map_sets_count, RawImage *texture_images, u32 texture_count) {
 	    if (texture_images && texture_count) {
@@ -138,12 +139,11 @@ struct ExampleVulkanApp : SlimApp {
 			
 	    if (cube_map_sets && cube_map_sets_count) {
 		    skybox_maps = new GPUImage[cube_map_sets_count];
-		    radiance_maps = new GPUImage[cube_map_sets_count];
-		    irradiance_maps = new GPUImage[cube_map_sets_count];
+		    ibl_maps = new GPUImage[cube_map_sets_count * 2];
 		    for (u32 i = 0; i < cube_map_sets_count; i++) {
                 skybox_maps[i].createCubeMap(cube_map_sets[i].skybox, cube_map_sets_names[i][0]);
-                radiance_maps[i].createCubeMap(cube_map_sets[i].radiance, cube_map_sets_names[i][1]);
-                irradiance_maps[i].createCubeMap(cube_map_sets[i].irradiance, cube_map_sets_names[i][2]);
+                ibl_maps[i * 2 + 0].createCubeMap(cube_map_sets[i].radiance, cube_map_sets_names[i][1]);
+                ibl_maps[i * 2 + 1].createCubeMap(cube_map_sets[i].irradiance, cube_map_sets_names[i][2]);
 		    }
 	    }  
     }
@@ -159,9 +159,9 @@ struct ExampleVulkanApp : SlimApp {
         initTextures(cube_map_sets.array, CUBE_MAP_SETS_COUNT, images, ImageCount);
 
         raster_render_pipeline::create();
-        default_material::create(textures, 4);
+        default_material::create(textures, 4, ibl_maps, CUBE_MAP_SETS_COUNT);
         line_rendering::create();
-        skybox_renderer::create(skybox_maps[0]);
+        skybox_renderer::create(skybox_maps, CUBE_MAP_SETS_COUNT);
     }
 
     void OnWindowResize(u16 width, u16 height) override {
@@ -180,7 +180,12 @@ struct ExampleVulkanApp : SlimApp {
     }
 
     void OnRenderMainPass(GraphicsCommandBuffer &command_buffer) override {
+        mat3 camera_ray_matrix = camera.orientation;
+        camera_ray_matrix.Z *= camera.focal_length;
+		camera_ray_matrix.X /= viewport.dimensions.height_over_width;
+        skybox_renderer::draw(command_buffer, Mat4(camera_ray_matrix), skybox_index);
 
+        default_material::bindIBL(command_buffer, skybox_index);
         default_material::bind(command_buffer, debug_flags);
         mesh_group.vertex_buffer.bind(command_buffer);
         for (u32 g = 0; g < scene.counts.geometries; g++) {
@@ -202,11 +207,6 @@ struct ExampleVulkanApp : SlimApp {
                 }
             }
         }
-
-        mat3 camera_ray_matrix = camera.orientation;
-        camera_ray_matrix.Z *= camera.focal_length;
-		camera_ray_matrix.X /= viewport.dimensions.height_over_width;
-        skybox_renderer::draw(command_buffer, Mat4(camera_ray_matrix));
 
         mat4 view_projection = raster_render_pipeline::camera_uniform_data.view * raster_render_pipeline::camera_uniform_data.proj;
         if (controls::is_pressed::alt) drawSelection(selection, command_buffer, view_projection, scene.meshes);
@@ -264,6 +264,7 @@ struct ExampleVulkanApp : SlimApp {
             if (key == '7') {debug_flags = DRAW_ALBEDO;   debug_maps = 0; }
             if (key == '6') {debug_flags = DRAW_NORMAL;   debug_maps = HAS_NORMAL_MAP; }
             if (key == '8') {debug_flags = DRAW_ALBEDO;   debug_maps = HAS_ALBEDO_MAP; }
+            if (key == 'B') skybox_index = (skybox_index + 1) % 2;
             if (key == 'Z') {dog_material_params.normal_strength -= 0.2f; if (dog_material_params.normal_strength < 0.0f) dog_material_params.normal_strength = 0.0f; }
             if (key == 'X') {dog_material_params.normal_strength += 0.2f; if (dog_material_params.normal_strength > 4.0f) dog_material_params.normal_strength = 4.0f; }
             if (key == 'C') {floor_material_params.normal_strength -= 0.2f; if (floor_material_params.normal_strength < 0.0f) floor_material_params.normal_strength = 0.0f; }
@@ -283,8 +284,8 @@ struct ExampleVulkanApp : SlimApp {
         for (u32 i = 0; i < ImageCount; i++) textures[i].destroy();
         for (u32 i = 0; i < CUBE_MAP_SETS_COUNT; i++) {
             skybox_maps[i].destroy();
-            radiance_maps[i].destroy();
-            irradiance_maps[i].destroy();
+            ibl_maps[i * 2 + 0].destroy();
+            ibl_maps[i * 2 + 1].destroy();
         }
     }
 };

@@ -13,7 +13,7 @@ namespace raster_render_pipeline {
         alignas(16) mat4 proj;
     };
     struct LightsUniform {
-        alignas(16) vec3 camera_position;
+        alignas(16) vec4 camera_position_and_IBL_intensity;
         alignas(16) Light key_light;
         alignas(16) Light fill_light;
         alignas(16) Light rim_light;
@@ -31,11 +31,11 @@ namespace raster_render_pipeline {
     LightsUniform lights_uniform_data{};
     CameraUniform camera_uniform_data{};
 
-    void update(const mat4 &projection_matrix, const mat4 &view_matrix, const vec3 &camera_position, const Light *lights, u8 light_count) {
+    void update(const mat4 &projection_matrix, const mat4 &view_matrix, const vec3 &camera_position, const Light *lights, u8 light_count, f32 IBL_intensity = 1.0f) {
         lights_uniform_data.key_light = lights[0];
         lights_uniform_data.fill_light = lights[1];
         lights_uniform_data.rim_light = lights[2];
-        lights_uniform_data.camera_position = camera_position;
+        lights_uniform_data.camera_position_and_IBL_intensity = Vec4(camera_position, IBL_intensity);
         camera_uniform_data.view = view_matrix;
         camera_uniform_data.proj = projection_matrix;
         camera_uniform_buffers[present::current_frame].upload(&camera_uniform_data);

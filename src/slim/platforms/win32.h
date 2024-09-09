@@ -38,20 +38,15 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
 
         case WM_SIZE:
             if (lParam) {
-                WORD new_window_width = LOWORD(lParam);
-                WORD new_window_height = HIWORD(wParam);
-                if (new_window_width == window::width &&
-                    new_window_height == window::height) {
+                GetClientRect(hWnd, &Win32_window_rect);
+                Win32_bitmap_info.bmiHeader.biWidth = Win32_window_rect.right - Win32_window_rect.left;
+                Win32_bitmap_info.bmiHeader.biHeight = Win32_window_rect.bottom - Win32_window_rect.top;
+                if (window::width == (u16)Win32_bitmap_info.bmiHeader.biWidth &&
+                    window::height == (u16)Win32_bitmap_info.bmiHeader.biHeight) {
                     CURRENT_APP->_restore();
                 } else {
-                    GetClientRect(hWnd, &Win32_window_rect);
-                    Win32_bitmap_info.bmiHeader.biWidth = Win32_window_rect.right - Win32_window_rect.left;
-                    Win32_bitmap_info.bmiHeader.biHeight = Win32_window_rect.top - Win32_window_rect.bottom;
-                    CURRENT_APP->_resize((u16)Win32_bitmap_info.bmiHeader.biWidth, (u16)-Win32_bitmap_info.bmiHeader.biHeight);
+                    CURRENT_APP->_resize((u16)Win32_bitmap_info.bmiHeader.biWidth, (u16)Win32_bitmap_info.bmiHeader.biHeight);
                 }
-
-                window::width = new_window_width;
-                window::height = new_window_height;
             } else
                 CURRENT_APP->_minimize();
 
@@ -243,9 +238,16 @@ int Win32_EntryPoint(HINSTANCE hInstance, int nCmdShow = SW_SHOW) {
 
     CURRENT_APP->_init();
 
-    Win32_window_dc = GetDC(Win32_window);
-
-    SetICMMode(Win32_window_dc, ICM_OFF);
+    Win32_window_rect.top = 0;
+    Win32_window_rect.left = 0;
+    Win32_window_rect.right  = window::width;
+    Win32_window_rect.bottom = window::height;
+    AdjustWindowRect(&Win32_window_rect, WS_OVERLAPPEDWINDOW, false);
+    SetWindowPos(Win32_window, HWND_TOP,
+                 0, 0,
+                 window::width,
+                 window::height,
+                 SWP_NOMOVE | SWP_NOREDRAW | SWP_NOZORDER);
 
     ShowWindow(Win32_window, nCmdShow);
 

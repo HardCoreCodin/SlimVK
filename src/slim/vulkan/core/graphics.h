@@ -25,9 +25,9 @@ namespace gpu {
         void setViewportAndScissor(const VkRect2D &rect) {
             VkViewport viewport{};
             viewport.x = (float)rect.offset.x;
-            viewport.y = (float)rect.offset.y;
+            viewport.y = (float)rect.offset.y + (float)rect.extent.height;
             viewport.width = (float)rect.extent.width;
-            viewport.height = (float)rect.extent.height;
+            viewport.height = -(float)rect.extent.height;
             viewport.minDepth = 0.0f;
             viewport.maxDepth = 1.0f;
 

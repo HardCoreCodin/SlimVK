@@ -421,12 +421,12 @@ namespace gpu {
             for (u32 side = 0; side < 6; side++) {
                 u8 *src;
                 switch (side) {
-                    case 0: src = images.pos_z.content; break;
-                    case 1: src = images.neg_z.content; break;
+                    case 0: src = images.pos_x.content; break;
+                    case 1: src = images.neg_x.content; break;
                     case 2: src = images.pos_y.content; break;
                     case 3: src = images.neg_y.content; break;
-                    case 4: src = images.pos_x.content; break;
-                    case 5: src = images.neg_x.content; break;
+                    case 4: src = images.pos_z.content; break;
+                    case 5: src = images.neg_z.content; break;
                 }
 
                 for (u32 i = 0; i < image.size; i++) {
@@ -442,7 +442,7 @@ namespace gpu {
                 image.width,
                 image.height,
                 name,
-                image.flags.normal ? VK_FORMAT_R8G8B8A8_UNORM : VK_FORMAT_R8G8B8A8_SRGB,
+                VK_FORMAT_R8G8B8A8_UNORM,
                 VK_IMAGE_VIEW_TYPE_CUBE,
                 view_aspect_flags,
                 tiling,

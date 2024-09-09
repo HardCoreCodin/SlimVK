@@ -59,13 +59,19 @@ namespace default_material {
     };
     constexpr u8 descriptor_set_binding_count = sizeof(descriptor_set_layout_bindings) / sizeof(VkDescriptorSetLayoutBinding);
     DescriptorSetLayout descriptor_set_layout{descriptor_set_layout_bindings, descriptor_set_binding_count, true};
+    DescriptorSetLayout ibl_descriptor_set_layout{descriptor_set_layout_bindings, descriptor_set_binding_count, true};
     DescriptorPool descriptor_set_pool;
+    DescriptorPool ibl_descriptor_set_pool;
     VkDescriptorSet descriptor_sets[16];
+    VkDescriptorSet ibl_descriptor_sets[16];
     PipelineLayout pipeline_layout{};
     GraphicsPipeline pipeline{};
     GraphicsPipeline debug_pipeline{};
 
-    bool create(const GPUImage *textures, u8 texture_count, RenderPass *render_pass = &present::render_pass) {
+    bool create(
+        const GPUImage *textures, u8 texture_count, 
+        const GPUImage *ibl_maps, u8 ibl_map_count, 
+        RenderPass *render_pass = &present::render_pass) {
         const u8 material_instances_count = texture_count / 2;
 
         if (pipeline.handle)
@@ -83,8 +89,18 @@ namespace default_material {
         if (!descriptor_set_layout.create())
             return false;
 
-        VkDescriptorSetLayout descriptor_set_layouts[]{ raster_render_pipeline::descriptor_set_layout.handle, descriptor_set_layout.handle};
-        if (!pipeline_layout.create(descriptor_set_layouts, 2, &push_constant_spec))
+        if (!ibl_descriptor_set_layout.create())
+            return false;
+
+        VkDescriptorSetLayout descriptor_set_layouts[]{ 
+            raster_render_pipeline::descriptor_set_layout.handle, 
+            descriptor_set_layout.handle, 
+            ibl_descriptor_set_layout.handle
+        };
+        if (!pipeline_layout.create(
+            descriptor_set_layouts, 
+            sizeof(descriptor_set_layouts) / sizeof(VkDescriptorSetLayout), 
+            &push_constant_spec))
             return false;
 
         if (!pipeline.create(render_pass->handle, pipeline_layout.handle, vertex_shader, fragment_shader))
@@ -101,6 +117,14 @@ namespace default_material {
             textures[i * 2 + 1].writeDescriptor(descriptor_sets[i], 1);
         }
 
+        if (!ibl_descriptor_set_pool.createAndAllocate(ibl_descriptor_set_layout, ibl_descriptor_sets, ibl_map_count))
+            return false;
+        
+        for (u8 i = 0; i < ibl_map_count; i++) {
+            ibl_maps[i * 2 + 0].writeDescriptor(ibl_descriptor_sets[i], 0);
+            ibl_maps[i * 2 + 1].writeDescriptor(ibl_descriptor_sets[i], 1);
+        }
+
         return true;
     }
 
@@ -110,6 +134,8 @@ namespace default_material {
         pipeline_layout.destroy();
         descriptor_set_layout.destroy();
         descriptor_set_pool.destroy();
+        ibl_descriptor_set_layout.destroy();
+        ibl_descriptor_set_pool.destroy();
         vertex_shader.destroy();
         fragment_shader.destroy();
         debug_shader.destroy();
@@ -123,8 +149,12 @@ namespace default_material {
         pipeline_layout.bind(raster_render_pipeline::descriptor_sets[present::current_frame], command_buffer);
     }
 
-    void bindTextures(const GraphicsCommandBuffer &command_buffer, u8 set_index) {
-        pipeline_layout.bind(default_material::descriptor_sets[set_index], command_buffer, 1);
+    void bindTextures(const GraphicsCommandBuffer &command_buffer, u8 material_instance_index) {
+        pipeline_layout.bind(descriptor_sets[material_instance_index], command_buffer, 1);
+    }
+
+    void bindIBL(const GraphicsCommandBuffer &command_buffer, u8 ibl_index) {
+        pipeline_layout.bind(ibl_descriptor_sets[ibl_index], command_buffer, 2);
     }
 
     void setModel(const GraphicsCommandBuffer &command_buffer, const Transform &transform, const MaterialParams &material_params, u8 flags = 0) {
