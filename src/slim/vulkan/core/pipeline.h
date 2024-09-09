@@ -238,35 +238,42 @@ namespace gpu {
                 info.pSpecializationInfo = nullptr;
             }
 
-            // Vertex input
-            VkVertexInputBindingDescription binding_description;
-            binding_description.binding = 0;  // Binding index
-            binding_description.stride = vertex_shader.vertex_descriptor->vertex_input_stride;
-            binding_description.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;  // Move to next data entry for each vertex.
-
-            // Process attributes
-            VkVertexInputAttributeDescription vertex_input_attribute_descriptions[16];
-            u32 vertex_input_offset = 0;
-            for (u32 i = 0; i < vertex_shader.vertex_descriptor->attribute_count; ++i) {
-                // Setup the new attribute.
-                const VertexAttributeType &type{vertex_shader.vertex_descriptor->attribute_types[i]};
-                VkVertexInputAttributeDescription attribute = {};
-                attribute.location = i;
-                attribute.offset = vertex_input_offset;
-                attribute.format = type.format;
-
-                // Push into the config's attribute collection and add to the stride.
-                vertex_input_attribute_descriptions[i] = attribute;
-                vertex_input_offset += type.size;
-            }
-
-            // Attributes
             VkPipelineVertexInputStateCreateInfo vertex_input_info = {VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
-            vertex_input_info.vertexBindingDescriptionCount = 1;
-            vertex_input_info.pVertexBindingDescriptions = &binding_description;
-            vertex_input_info.vertexAttributeDescriptionCount = vertex_shader.vertex_descriptor->attribute_count;
-            vertex_input_info.pVertexAttributeDescriptions = vertex_input_attribute_descriptions;
+            if (vertex_shader.vertex_descriptor) {
+                // Vertex input
+                VkVertexInputBindingDescription binding_description;
+                binding_description.binding = 0;  // Binding index
+                binding_description.stride = vertex_shader.vertex_descriptor->vertex_input_stride;
+                binding_description.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;  // Move to next data entry for each vertex.
 
+                // Process attributes
+                VkVertexInputAttributeDescription vertex_input_attribute_descriptions[16];
+                u32 vertex_input_offset = 0;
+                for (u32 i = 0; i < vertex_shader.vertex_descriptor->attribute_count; ++i) {
+                    // Setup the new attribute.
+                    const VertexAttributeType &type{vertex_shader.vertex_descriptor->attribute_types[i]};
+                    VkVertexInputAttributeDescription attribute = {};
+                    attribute.location = i;
+                    attribute.offset = vertex_input_offset;
+                    attribute.format = type.format;
+
+                    // Push into the config's attribute collection and add to the stride.
+                    vertex_input_attribute_descriptions[i] = attribute;
+                    vertex_input_offset += type.size;
+                }
+
+                // Attributes
+                vertex_input_info.vertexBindingDescriptionCount = 1;
+                vertex_input_info.pVertexBindingDescriptions = &binding_description;
+                vertex_input_info.vertexAttributeDescriptionCount = vertex_shader.vertex_descriptor->attribute_count;
+                vertex_input_info.pVertexAttributeDescriptions = vertex_input_attribute_descriptions;
+            } else {
+                vertex_input_info.vertexAttributeDescriptionCount = 0;
+                vertex_input_info.pVertexAttributeDescriptions = nullptr;
+                vertex_input_info.vertexBindingDescriptionCount = 0;
+                vertex_input_info.pVertexBindingDescriptions = nullptr;
+            }
+            
             // Input assembly
             VkPipelineInputAssemblyStateCreateInfo input_assembly = {VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO};
             input_assembly.topology = is_wireframe ? VK_PRIMITIVE_TOPOLOGY_LINE_LIST : VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;

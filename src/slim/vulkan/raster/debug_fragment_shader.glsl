@@ -2,7 +2,7 @@
 #extension GL_ARB_separate_shader_objects : enable
 
 #define HAS_ALBEDO_MAP 1
-#define HAS_NORMAL_MAP 1
+#define HAS_NORMAL_MAP 2
 #define DRAW_DEPTH 4
 #define DRAW_POSITION 8
 #define DRAW_NORMAL 16
@@ -37,6 +37,54 @@ layout(push_constant) uniform Model {
     ModelMaterialParams material_params;
 } model;
 
+vec3 encodeNormal(vec3 normal) {
+    return normal * 0.5f + 0.5f;
+}
+
+vec3 decodeNormal(vec4 color) {
+    vec3 N = vec3(color.r, color.g, color.b);
+    return normalize(N * 2.0f - 1.0f);
+}
+vec3 toneMapped(vec3 color) {
+    vec3 x = clamp(color - 0.004f, 0.0f, 1.0f);
+    vec3 x2_times_sholder_strength = x * x * 6.2f;
+    return (x2_times_sholder_strength + x*0.5f)/(x2_times_sholder_strength + x*1.7f + 0.06f);
+}
+
+vec3 rotateNormal(vec3 Ng, vec4 normal_sample, float magnitude) {
+    vec3 Nm = normalize(normal_sample.xzy * 2.0f - 1.0f);
+    float angle = magnitude * acos(Nm.y) * 0.5f;
+    vec4 q = normalize(vec4(normalize(vec3(Nm.z, 0, -Nm.x)) * sin(angle), cos(angle)));
+    vec3 T = cross(q.xyz, Ng);
+    return Ng + 2.0f * (T * q.w + cross(q.xyz, T));
+}
+
+void main() {
+    if      ((model.material_params.flags & DRAW_DEPTH   ) != 0) out_color = vec4(vec3(max(in_position.z * 0.00001f, 1.0f)), 1.0f);
+    else if ((model.material_params.flags & DRAW_POSITION) != 0) out_color = vec4(clamp(in_position, 0.0, 1.0f), 1.0f);
+    else if ((model.material_params.flags & DRAW_UVS     ) != 0) out_color = vec4(fract(1000.0f + in_uv.x), fract(1000.0f + in_uv.y), 0.0f, 1.0f);
+    else if ((model.material_params.flags & DRAW_ALBEDO  ) != 0) {
+        if ((model.material_params.flags & HAS_ALBEDO_MAP) != 0) {
+            out_color = vec4(texture(albedo_texture, in_uv).rgb * model.material_params.albedo, 1.0f);
+        } else {
+            out_color = vec4(model.material_params.albedo, 1.0f);
+        }
+    } else if ((model.material_params.flags & DRAW_NORMAL) != 0) {
+        vec3 N = normalize(in_normal);
+        if ((model.material_params.flags & HAS_NORMAL_MAP) != 0) {
+            //vec3 T = normalize(in_tangent);
+            //vec3 B = cross(T, N);
+            //N = normalize(mat3(T, B, N) * decodeNormal(texture(normal_texture, in_uv)));
+            N = normalize(rotateNormal(N, texture(normal_texture, in_uv), model.material_params.normal_strength));
+        }
+        out_color = vec4(encodeNormal(N), 1.0f);
+    }
+}
+
+
+
+
+/*
 vec4 quat_from_axis_angle(vec3 axis, float angle)
 {
     vec4 qr;
@@ -88,14 +136,6 @@ vec3 rotate(vec3 v, vec4 q) {
     vec3 qqv = Cross(axis, result);
     result = (result * amount) + qqv;
     result = (result * 2.0f) +  v;
-
-//    v = normalize(v);
-//    vec3 axis = q.xyz;
-//    float amount = q.w;
-//    vec3 result = cross(axis, v);
-//    vec3 qqv = cross(axis, result);
-//    result = result * amount + qqv;
-//    result = result * 2.0f + v;
     return result;
 //
 //    return V + 2.0f * (result * q.a + cross(q.xyz, result));
@@ -119,41 +159,43 @@ vec4 getRotationFromAxisAndAngle(vec3 axis, float radians) {
 ////    return v + 2.0f * (cross(q.xyz, cross(q.xyz, v ) + q.w * v));
 //}
 
-vec4 quat(vec3 v1, vec3 v2) {
+//vec4 quat(vec3 v1, vec3 v2) {
 //    vec4 q;
 //    vec3 a = cross(v1, v2);
 //    q.xyz = a;
 //    q.w = sqrt(dot(v1, v1) * dot(v2, v2)) + dot(v1, v2);
-    return normalize(vec4(cross(v1, v2), sqrt(dot(v1, v1) * dot(v2, v2)) + dot(v1, v2)));
-}
+//    return normalize(vec4(cross(v1, v2), sqrt(dot(v1, v1) * dot(v2, v2)) + dot(v1, v2)));
+//}
 
 vec4 getNormalRotation(vec3 N, float magnitude) {
-    vec3 Nt = vec3(0.0f, 1.0f, 0.0f);
-    vec3 axis = -cross(N, Nt);
-    float l = length(axis);
-    axis /= l;
-    float angle = asin(l) * magnitude;// acos(dot(N, Nt)) * magnitude;
-    return quat_from_axis_angle(axis, angle);
-//    return getRotationFromAxisAndAngle(normalize(vec3(N.z, 0, -N.x)), acos(N.y) * magnitude);
+    //vec3 Nt = vec3(0.0f, 1.0f, 0.0f);
+    //vec3 axis = -cross(N, Nt);
+    //float l = length(axis);
+    //axis /= l;
+    //float angle = asin(l) * magnitude;// acos(dot(N, Nt)) * magnitude;
+    //return quat_from_axis_angle(axis, angle);
+    return getRotationFromAxisAndAngle(normalize(vec3(N.z, 0, -N.x)), acos(N.y) * magnitude);
 }
 //vec3 rotateNormal(vec3 Nm, float magnitude, vec3 Ng) {
 //    return rotate(Ng, getNormalRotation(Nm, 1.0f));//quat(vec3(0.0f, 0.0f, 1.0f), Nm));
 //}
 
 
-vec3 rotateNormal(vec3 Nm, float magnitude, vec3 Ng) {
-    vec3 axis = normalize(vec3(Nm.z, 0, -Nm.x));
-    float angle = acos(Nm.y) * magnitude;
-    angle *= 0.5f;
-    axis *= sin(angle);
-    float amount = cos(angle);
+//vec3 rotateNormal(vec3 Nm, float magnitude, vec3 Ng) {
+//    vec3 axis = normalize(vec3(Nm.z, 0, -Nm.x));
+//    float angle = acos(Nm.y) * magnitude;
+//    angle *= 0.5f;
+//    axis *= sin(angle);
+//    float amount = cos(angle);
 
-    vec4 q;
-    q.x = axis.x;
-    q.y = axis.y;
-    q.z = axis.z;
-    q.w = amount;
-    q *= 1.0f / sqrt(q.x*q.x + q.y*q.y + q.z*q.z + q.w*q.w);
+//    vec4 q;
+//    q.x = axis.x;
+//    q.y = axis.y;
+//    q.z = axis.z;
+//    q.w = amount;
+//    q *= 1.0f / sqrt(q.x*q.x + q.y*q.y + q.z*q.z + q.w*q.w);
+
+
 //    axis.x = q.x;
 //    axis.y = q.y;
 //    axis.z = q.z;
@@ -164,8 +206,8 @@ vec3 rotateNormal(vec3 Nm, float magnitude, vec3 Ng) {
 //    result = result * amount + qqv;
 //    result = result * 2.0f +  Ng;
 
-    return rotate(Ng, q);
-}
+//    return rotate(Ng, q);
+//}
 
 // axis      = up ^ normal = [0, 1, 0] ^ [x, y, z] = [1*z - 0*y, 0*x - 0*z, 0*y - 1*x] = [z, 0, -x]
 // cos_angle = up . normal = [0, 1, 0] . [x, y, z] = 0*x + 1*y + 0*z = y
@@ -174,46 +216,15 @@ vec3 rotateNormal(vec3 Nm, float magnitude, vec3 Ng) {
 //    return rotate(normal, getNormalRotation(normal_sample, magnitude));
 //}
 
-vec3 decodeNormal(vec4 color) {
-    vec3 N = vec3(color.r, color.g, color.b);
-    return normalize(N * 2.0f - 1.0f);
-}
-
 //vec3 decodeNormal(const vec4 color) {
 //    vec3 normal = color.xzy * 2.0f - 1.0f;
 ////    normal.y = -normal.y;
 //    return normalize(normal);
 //}
 
-vec3 encodeNormal(const vec3 normal) {
-    return normal * 0.5f + 0.5f;
+
+quat convertNormalSampleToRotation(vec3 normal_sample, float magnitude) {
+    return getNormalRotation(decodeNormal(normal_sample).xzy, magnitude);
 }
 
-vec3 toneMapped(vec3 color) {
-    vec3 x = clamp(color - 0.004f, 0.0f, 1.0f);
-    vec3 x2_times_sholder_strength = x * x * 6.2f;
-    return (x2_times_sholder_strength + x*0.5f)/(x2_times_sholder_strength + x*1.7f + 0.06f);
-}
-
-
-void main() {
-    if      ((model.material_params.flags & DRAW_DEPTH   ) != 0) out_color = vec4(vec3(max(in_position.z * 0.00001f, 1.0f)), 1.0f);
-    else if ((model.material_params.flags & DRAW_POSITION) != 0) out_color = vec4(clamp(in_position, 0.0, 1.0f), 1.0f);
-    else if ((model.material_params.flags & DRAW_UVS     ) != 0) out_color = vec4(fract(1000.0f + in_uv.x), fract(1000.0f + in_uv.y), 0.0f, 1.0f);
-    else if ((model.material_params.flags & DRAW_ALBEDO  ) != 0) {
-        if ((model.material_params.flags & HAS_ALBEDO_MAP) != 0) {
-            out_color = vec4(texture(albedo_texture, in_uv).rgb * model.material_params.albedo, 1.0f);
-        } else {
-            out_color = vec4(model.material_params.albedo, 1.0f);
-        }
-    } else if ((model.material_params.flags & DRAW_NORMAL) != 0) {
-        vec3 N = normalize(in_normal);
-        if ((model.material_params.flags & HAS_NORMAL_MAP) != 0) {
-            vec3 T = normalize(in_tangent);
-            vec3 B = cross(T, N);
-            N = normalize(mat3(T, B, N) * decodeNormal(texture(normal_texture, in_uv)));
-//            N = normalize(rotateNormal(decodeNormal(texture(normal_texture, in_uv)), 1.0f, N));
-        }
-        out_color = vec4(texture(normal_texture, in_uv).rgb, 1.0f);
-    }
-}
+*/

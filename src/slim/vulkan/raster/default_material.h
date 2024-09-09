@@ -9,17 +9,41 @@
 namespace default_material {
     using namespace gpu;
 
+    char default_vertex_shader_file[100];
+    char default_fragment_shader_file[100];
+    char debug_fragment_shader_file[100];
+    String shader_files[]{
+        String::getFilePath("default_vertex_shader.glsl", default_vertex_shader_file, __FILE__),
+        String::getFilePath("default_fragment_shader.glsl", default_fragment_shader_file, __FILE__),
+        String::getFilePath("debug_fragment_shader.glsl", debug_fragment_shader_file, __FILE__)
+    };
+
     struct MaterialParams {
         vec3 albedo;
         float roughness;
         vec3 F0;
         float metalness;
         float normal_strength;
-        u32 use_textures;
+        u32 flags;
     };
+    struct ModelTransform {
+        alignas(16) vec4 rotation;
+        alignas(16) vec3 position;
+        alignas(16) vec3 scale;
 
+        ModelTransform(const Transform &transform = {}) :
+            rotation{
+                transform.orientation.axis.x,
+                transform.orientation.axis.y,
+                transform.orientation.axis.z,
+                transform.orientation.amount
+            },
+            position{transform.position},
+            scale{transform.scale}
+        {}
+    };
     struct PushConstant {
-        alignas(16) mat4 object_to_world;
+        alignas(16) ModelTransform transform;
         alignas(16) MaterialParams material_params;
     };
     PushConstant push_constant{};
@@ -27,6 +51,7 @@ namespace default_material {
 
     VertexShader vertex_shader{};
     FragmentShader fragment_shader{};
+    FragmentShader debug_shader{};
 
     VkDescriptorSetLayoutBinding descriptor_set_layout_bindings[]{
         DescriptorSetLayoutBindingForFragmentImageAndSampler(),
@@ -38,17 +63,21 @@ namespace default_material {
     VkDescriptorSet descriptor_sets[16];
     PipelineLayout pipeline_layout{};
     GraphicsPipeline pipeline{};
+    GraphicsPipeline debug_pipeline{};
 
-    bool create(const char* vertex_shader_file, const char* fragment_shader_file, const GPUImage *textures, u8 texture_count, RenderPass *render_pass = &present::render_pass) {
+    bool create(const GPUImage *textures, u8 texture_count, RenderPass *render_pass = &present::render_pass) {
         const u8 material_instances_count = texture_count / 2;
 
         if (pipeline.handle)
             return true;
 
-        if (!vertex_shader.createFromSourceFile(vertex_shader_file, &vertex_descriptor))
+        if (!vertex_shader.createFromSourceFile(default_vertex_shader_file, &vertex_descriptor))
             return false;
 
-        if (!fragment_shader.createFromSourceFile(fragment_shader_file))
+        if (!fragment_shader.createFromSourceFile(default_fragment_shader_file))
+            return false;
+
+        if (!debug_shader.createFromSourceFile(debug_fragment_shader_file))
             return false;
 
         if (!descriptor_set_layout.create())
@@ -59,6 +88,9 @@ namespace default_material {
             return false;
 
         if (!pipeline.create(render_pass->handle, pipeline_layout.handle, vertex_shader, fragment_shader))
+            return false;
+
+        if (!debug_pipeline.create(render_pass->handle, pipeline_layout.handle, vertex_shader, debug_shader))
             return false;
 
         if (!descriptor_set_pool.createAndAllocate(descriptor_set_layout, descriptor_sets, material_instances_count))
@@ -73,26 +105,32 @@ namespace default_material {
     }
 
     void destroy() {
+        debug_pipeline.destroy();
         pipeline.destroy();
         pipeline_layout.destroy();
         descriptor_set_layout.destroy();
         descriptor_set_pool.destroy();
-        fragment_shader.destroy();
         vertex_shader.destroy();
+        fragment_shader.destroy();
+        debug_shader.destroy();
     }
 
-    void bind(const GraphicsCommandBuffer &command_buffer) {
-        default_material::pipeline.bind(command_buffer);
-        default_material::pipeline_layout.bind(raster_render_pipeline::descriptor_sets[present::current_frame], command_buffer);
+    void bind(const GraphicsCommandBuffer &command_buffer, bool debug = false) {
+        if (debug)
+            debug_pipeline.bind(command_buffer);
+        else
+            pipeline.bind(command_buffer);
+        pipeline_layout.bind(raster_render_pipeline::descriptor_sets[present::current_frame], command_buffer);
     }
 
     void bindTextures(const GraphicsCommandBuffer &command_buffer, u8 set_index) {
-        default_material::pipeline_layout.bind(default_material::descriptor_sets[set_index], command_buffer, 1);
+        pipeline_layout.bind(default_material::descriptor_sets[set_index], command_buffer, 1);
     }
 
-    void setModel(const GraphicsCommandBuffer &command_buffer, const mat4 &object_to_world, const MaterialParams &material_params) {
-        default_material::push_constant.object_to_world = object_to_world;
-        default_material::push_constant.material_params = material_params;
-        default_material::pipeline_layout.pushConstants(command_buffer, default_material::push_constant_spec.ranges[0], &default_material::push_constant);
+    void setModel(const GraphicsCommandBuffer &command_buffer, const Transform &transform, const MaterialParams &material_params, u8 flags = 0) {
+        push_constant.transform = transform;
+        push_constant.material_params = material_params;
+        if (flags) push_constant.material_params.flags = flags;
+        pipeline_layout.pushConstants(command_buffer, default_material::push_constant_spec.ranges[0], &default_material::push_constant);
     }
 }

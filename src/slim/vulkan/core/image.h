@@ -116,7 +116,6 @@ namespace gpu {
             view_create_info.format = format;
             view_create_info.subresourceRange.aspectMask = aspect_flags;
             view_create_info.subresourceRange.levelCount = mip_count;
-            view_create_info.subresourceRange.layerCount = 1;
             view_create_info.subresourceRange.baseMipLevel = 0;
             view_create_info.subresourceRange.baseArrayLayer = 0;
 
@@ -231,23 +230,63 @@ namespace gpu {
                                    VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                                    to_buffer.handle, 1,&region);
         }
+        
+        static VkFormat imageFormat(ImageFlags flags) {
+            return flags.normal ? (
+                flags.alpha ? 
+                VK_FORMAT_B8G8R8A8_UNORM : 
+                VK_FORMAT_B8G8R8_UNORM
+                ) : (
+                    flags.alpha ? 
+                    VK_FORMAT_B8G8R8A8_SRGB : 
+                    VK_FORMAT_B8G8R8_SRGB
+                    );
+        }
 
-        bool createTextureFromPixels(const ByteColor *pixels, u32 image_width, u32 image_height,
-                                     const CommandBuffer &command_buffer, const char *texture_name,
-                                     VkFormat format = VK_FORMAT_B8G8R8A8_SRGB, bool mip_map = true) {
+        bool createTexture(
+            const u8 *data, 
+            u32 texel_size, 
+            u32 image_width, 
+            u32 image_height,
+            const char *texture_name,
+            VkFormat format = VK_FORMAT_R8G8B8A8_SRGB, 
+            VkImageViewType view_type = VK_IMAGE_VIEW_TYPE_2D,
+            VkImageAspectFlags view_aspect_flags = VK_IMAGE_ASPECT_COLOR_BIT,
+            VkImageTiling tiling = VK_IMAGE_TILING_OPTIMAL,
+            VkMemoryPropertyFlags image_memory_flags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+            CommandBuffer *command_buffer = nullptr ,
+            bool mip_map = true,
+            bool create_view = true,
+            bool create_sampler = true
+        ) {
+            if (!command_buffer) command_buffer = &transient_graphics_command_buffer;
+
             Buffer staging{};
-            if (!staging.createAsStaging(sizeof(ByteColor) * image_width * image_height, pixels))
+            if (!staging.createAsStaging(texel_size * image_width * image_height * (view_type == VK_IMAGE_VIEW_TYPE_CUBE ? 6 : 1), data))
                 return false;
 
             VkImageUsageFlags usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
             if (mip_map)
                 usage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
 
-            create(image_width, image_height, format, texture_name, usage);
+            create(
+                image_width, 
+                image_height, 
+                format, 
+                texture_name, 
+                usage,
+                view_aspect_flags,
+                mip_map,
+                create_view,
+                create_sampler,
+                tiling,
+                image_memory_flags,
+                view_type
+            );
 
-            command_buffer.beginSingleUse();
-            transitionLayout(VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, command_buffer);
-            copyFromBuffer(staging, command_buffer);
+            command_buffer->beginSingleUse();
+            transitionLayout(VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, *command_buffer);
+            copyFromBuffer(staging, *command_buffer);
             if (mip_map) {
                 // Check if image format supports linear blitting
 //                VkFormatProperties formatProperties;
@@ -265,7 +304,7 @@ namespace gpu {
                     transitionLayout(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                                      VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
                                      VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT,
-                                     command_buffer, src_mip_level);
+                                     *command_buffer, src_mip_level);
 
                     VkImageBlit blit{};
                     blit.srcOffsets[0] = {0, 0, 0};
@@ -274,8 +313,8 @@ namespace gpu {
                     blit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
                     blit.srcSubresource.baseArrayLayer = 0;
                     blit.dstSubresource.baseArrayLayer = 0;
-                    blit.srcSubresource.layerCount = 1;
-                    blit.dstSubresource.layerCount = 1;
+                    blit.srcSubresource.layerCount = type == VK_IMAGE_VIEW_TYPE_CUBE ? 6 : 1;
+                    blit.dstSubresource.layerCount = type == VK_IMAGE_VIEW_TYPE_CUBE ? 6 : 1;
                     blit.srcSubresource.mipLevel = src_mip_level;
                     blit.dstSubresource.mipLevel = dst_mip_level;
 
@@ -286,7 +325,7 @@ namespace gpu {
                                            mipHeight > 1 ? mipHeight / 2 : 1,
                                            1 };
 
-                    vkCmdBlitImage(command_buffer.handle,
+                    vkCmdBlitImage(command_buffer->handle,
                                    handle, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                                    handle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                                    1, &blit, VK_FILTER_LINEAR);
@@ -294,7 +333,7 @@ namespace gpu {
                     transitionLayout(VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
                                      VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
                                      VK_ACCESS_TRANSFER_READ_BIT, VK_ACCESS_SHADER_READ_BIT,
-                                     command_buffer, blit.srcSubresource.mipLevel);
+                                     *command_buffer, blit.srcSubresource.mipLevel);
 
                     if (mipWidth > 1) mipWidth /= 2;
                     if (mipHeight > 1) mipHeight /= 2;
@@ -303,15 +342,119 @@ namespace gpu {
                 transitionLayout(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
                                  VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
                                  VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
-                                 command_buffer, mip_count - 1);
+                                 *command_buffer, mip_count - 1);
             } else
-                transitionLayout(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, command_buffer);
+                transitionLayout(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, *command_buffer);
 
-            command_buffer.endSingleUse();
+            command_buffer->endSingleUse();
 
             staging.destroy();
 
             return true;
+        }
+
+        bool createTexture(
+            const RawImage &image, 
+            const char *name = "",
+            VkImageViewType view_type = VK_IMAGE_VIEW_TYPE_2D,
+            VkImageAspectFlags view_aspect_flags = VK_IMAGE_ASPECT_COLOR_BIT,
+            VkImageTiling tiling = VK_IMAGE_TILING_OPTIMAL,
+            VkMemoryPropertyFlags image_memory_flags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+            CommandBuffer *command_buffer = nullptr,
+            bool mip_map = true,
+            bool create_view = true,
+            bool create_sampler = true
+        ) {
+            u8 *content = image.content;
+            if (!image.flags.alpha) {
+                content = new u8[image.size * 4];
+                u8 *src = image.content;
+                u8 *trg = content;
+
+                for (u32 i = 0; i < image.size; i++) {
+                    *(trg++) = *(src++); 
+                    *(trg++) = *(src++); 
+                    *(trg++) = *(src++); 
+                    *(trg++) = 255;
+                }
+            }
+
+            const bool result = createTexture(
+                content,
+                4,
+                image.width,
+                image.height,
+                name,
+                image.flags.normal ? VK_FORMAT_R8G8B8A8_UNORM : VK_FORMAT_R8G8B8A8_SRGB,
+                view_type,
+                view_aspect_flags,
+                tiling,
+                image_memory_flags,
+                command_buffer,
+                mip_map,
+                create_view,
+                create_sampler
+            );
+
+            if (!image.flags.alpha) delete[] content;
+
+            return result;
+        }
+
+        bool createCubeMap(
+            const CubeMapImages &images,
+            const char *name = "", 
+            VkImageAspectFlags view_aspect_flags = VK_IMAGE_ASPECT_COLOR_BIT,
+            VkImageTiling tiling = VK_IMAGE_TILING_OPTIMAL,
+            VkMemoryPropertyFlags image_memory_flags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+            CommandBuffer *command_buffer = nullptr,
+            bool mip_map = true,
+            bool create_view = true,
+            bool create_sampler = true
+        ) {
+            RawImage image = images.array[0];
+            u32 src_channel_count = image.flags.alpha ? 4 : 3;
+            u32 src_content_size = image.size * src_channel_count;
+            u32 trg_content_size = image.size * 4;
+            image.content = new u8[trg_content_size * 6];
+            u8 *trg = image.content;
+            for (u32 side = 0; side < 6; side++) {
+                u8 *src;
+                switch (side) {
+                    case 0: src = images.pos_z.content; break;
+                    case 1: src = images.neg_z.content; break;
+                    case 2: src = images.pos_y.content; break;
+                    case 3: src = images.neg_y.content; break;
+                    case 4: src = images.pos_x.content; break;
+                    case 5: src = images.neg_x.content; break;
+                }
+
+                for (u32 i = 0; i < image.size; i++) {
+                    *(trg++) = *(src++); 
+                    *(trg++) = *(src++); 
+                    *(trg++) = *(src++); 
+                    *(trg++) = 255;
+                }
+            }
+            const bool result = createTexture(
+                image.content,
+                4,
+                image.width,
+                image.height,
+                name,
+                image.flags.normal ? VK_FORMAT_R8G8B8A8_UNORM : VK_FORMAT_R8G8B8A8_SRGB,
+                VK_IMAGE_VIEW_TYPE_CUBE,
+                view_aspect_flags,
+                tiling,
+                image_memory_flags,
+                command_buffer,
+                mip_map,
+                create_view,
+                create_sampler
+            );
+
+            delete[] image.content;
+            return result;
         }
 
         void writeDescriptor(VkDescriptorSet descriptor_set, u32 binding_index) const {

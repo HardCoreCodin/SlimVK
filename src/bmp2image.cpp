@@ -2,7 +2,7 @@
 #include "./slim/serialization/image.h"
 
 int main(int argc, char *argv[]) {
-    ImageInfo info;
+    ImageInfo info{};
 
     char* bitmap_file_path = argv[1];
     char* image_file_path = argv[2];
@@ -13,6 +13,7 @@ int main(int argc, char *argv[]) {
         else if (argv[i][0] == '-' && argv[i][1] == 'c') info.flags.channel = true;
         else if (argv[i][0] == '-' && argv[i][1] == 'l') info.flags.linear = true;
         else if (argv[i][0] == '-' && argv[i][1] == 't') info.flags.tile = true;
+        else if (argv[i][0] == '-' && argv[i][1] == 'n') info.flags.normal = true;
         else if (argv[i][0] == '-' && argv[i][1] == 'b') byte_color = true;
         else return 0;
 

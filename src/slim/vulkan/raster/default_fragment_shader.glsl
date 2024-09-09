@@ -58,6 +58,115 @@ layout(push_constant) uniform Model {
     ModelMaterialParams material_params;
 } model;
 
+vec3 rotateNormal(vec3 Ng, vec4 normal_sample, float magnitude) {
+    vec3 Nm = normalize(normal_sample.xzy * 2.0f - 1.0f);
+    float angle = magnitude * acos(Nm.y) * 0.5f;
+    vec4 q = normalize(vec4(normalize(vec3(Nm.z, 0, -Nm.x)) * sin(angle), cos(angle)));
+    vec3 T = cross(q.xyz, Ng);
+    return Ng + 2.0f * (T * q.w + cross(q.xyz, T));
+}
+
+vec3 decodeNormal(const vec4 color) {
+    return normalize(color.xyz * 2.0f - 1.0f);
+}
+
+float ggxTrowbridgeReitz_D(float roughness, float NdotH) { // NDF
+    float a = roughness * roughness;
+    float denom = NdotH * NdotH * (a - 1.0f) + 1.0f;
+    return (
+        a
+        /
+        (pi * denom * denom)
+    );
+}
+
+float ggxSchlickSmith_G(float roughness, float NdotL, float NdotV) {
+    float k = roughness * roughness * 0.5f;
+    return (
+        NdotV / max(mix(NdotV, 1.0f, k), EPS) *
+        NdotL / max(mix(NdotL, 1.0f, k), EPS)
+    );
+}
+
+vec3 schlickFresnel(float HdotL, vec3 F0) {
+    return F0 + (1.0f - F0) * pow(1.0f - HdotL, 5.0f);
+}
+
+vec3 cookTorrance(float roughness, float NdotL, float NdotV, float NdotH, vec3 F) {
+    float D = ggxTrowbridgeReitz_D(roughness, NdotH);
+    float G = ggxSchlickSmith_G(roughness, NdotL, NdotV);
+    return (
+        F * (D * G
+        / (
+        4.0f * NdotL * NdotV
+    )));
+}
+
+vec3 BRDF(vec3 albedo, float roughness, vec3 F0, float metalness, vec3 V, vec3 N, float NdotL, vec3 L) {
+    vec3 Fs = vec3(0.0);
+    vec3 Fd = albedo * ((1.0f - metalness) * ONE_OVER_PI);
+
+    float NdotV = dot(N, V);
+    if (NdotV <= 0.0f ||
+        roughness <= 0)
+        return Fs + Fd;
+
+    vec3 H = normalize(L + V);
+    float NdotH = clamp(dot(N, H), 0.0, 1.0);
+    float HdotL = clamp(dot(H, L), 0.0, 1.0);
+    vec3 F = schlickFresnel(HdotL, F0);
+    Fs = cookTorrance(roughness, NdotL, NdotV, NdotH, F);
+    Fd *= 1.0f - F;
+    return Fs + Fd;
+}
+
+vec3 shadeFromLight(Light light, vec3 P, vec3 N, vec3 C, vec3 albedo, float roughness, vec3 F0, float metalness) {
+    vec3 L = light.position - P;
+    float NdotL = dot(L, N);
+    if (NdotL <= 0.f)
+        return vec3(0.f);
+
+    float Ld = length(L);
+    NdotL /= Ld;
+    vec3 V = normalize(C - P);
+
+    vec3 brdf = BRDF(albedo, roughness, F0, metalness, V, N, NdotL, L);
+    return light.color * (brdf * NdotL * light.intensity / (Ld * Ld));
+}
+
+vec3 toneMapped(vec3 color) {
+    vec3 x = clamp(color - 0.004f, 0.0f, 1.0f);
+    vec3 x2_times_sholder_strength = x * x * 6.2f;
+    return (x2_times_sholder_strength + x*0.5f)/(x2_times_sholder_strength + x*1.7f + 0.06f);
+}
+
+void main() {
+    vec3 albedo = model.material_params.albedo;
+    if ((model.material_params.flags & HAS_ALBEDO_MAP) != 0) {
+        albedo *= texture(albedo_texture, in_uv).rgb;
+    }
+    const vec3 C = lighting.camera_position;
+    const vec3 P = in_position;
+    const vec3 F0 = model.material_params.F0;
+    const float roughness = model.material_params.roughness;
+    const float metalness = model.material_params.metalness;
+    vec3 N = normalize(in_normal);
+    if ((model.material_params.flags & HAS_NORMAL_MAP) != 0) {
+        //vec3 T = normalize(in_tangent);
+        //vec3 B = cross(T, N);
+        //N = normalize(mat3(T, B, N) * decodeNormal(texture(normal_texture, in_uv)));
+        N = normalize(rotateNormal(N, texture(normal_texture, in_uv), model.material_params.normal_strength));
+    }
+    vec3 color = (
+        shadeFromLight(lighting.key_light , P, N, C, albedo, roughness, F0, metalness) +
+        shadeFromLight(lighting.fill_light, P, N, C, albedo, roughness, F0, metalness) +
+        shadeFromLight(lighting.rim_light , P, N, C, albedo, roughness, F0, metalness)
+    );
+    out_color = vec4(toneMapped(color), 1.0f);
+}
+
+
+/*
 vec4 quat_from_axis_angle(vec3 axis, float angle)
 {
     vec4 qr;
@@ -153,104 +262,4 @@ vec3 rotateNormal(vec3 Nm, float magnitude, vec3 Ng) {
 //vec3 rotateNormal(const vec3 normal, vec3 normal_sample, float magnitude) {
 //    return rotate(normal, getNormalRotation(normal_sample, magnitude));
 //}
-
-vec3 decodeNormal(const vec4 color) {
-    return normalize(color.xyz * 2.0f - 1.0f);
-}
-
-float ggxTrowbridgeReitz_D(float roughness, float NdotH) { // NDF
-    float a = roughness * roughness;
-    float denom = NdotH * NdotH * (a - 1.0f) + 1.0f;
-    return (
-        a
-        /
-        (pi * denom * denom)
-    );
-}
-
-float ggxSchlickSmith_G(float roughness, float NdotL, float NdotV) {
-    float k = roughness * roughness * 0.5f;
-    return (
-        NdotV / max(mix(NdotV, 1.0f, k), EPS) *
-        NdotL / max(mix(NdotL, 1.0f, k), EPS)
-    );
-}
-
-vec3 schlickFresnel(float HdotL, vec3 F0) {
-    return F0 + (1.0f - F0) * pow(1.0f - HdotL, 5.0f);
-}
-
-vec3 cookTorrance(float roughness, float NdotL, float NdotV, float NdotH, vec3 F) {
-    float D = ggxTrowbridgeReitz_D(roughness, NdotH);
-    float G = ggxSchlickSmith_G(roughness, NdotL, NdotV);
-    return (
-        F * (D * G
-        / (
-        4.0f * NdotL * NdotV
-    )));
-}
-
-vec3 BRDF(vec3 albedo, float roughness, vec3 F0, float metalness, vec3 V, vec3 N, float NdotL, vec3 L) {
-    vec3 Fs = vec3(0.0);
-    vec3 Fd = albedo * ((1.0f - metalness) * ONE_OVER_PI);
-
-    float NdotV = dot(N, V);
-    if (NdotV <= 0.0f ||
-        roughness <= 0)
-        return Fs + Fd;
-
-    vec3 H = normalize(L + V);
-    float NdotH = clamp(dot(N, H), 0.0, 1.0);
-    float HdotL = clamp(dot(H, L), 0.0, 1.0);
-    vec3 F = schlickFresnel(HdotL, F0);
-    Fs = cookTorrance(roughness, NdotL, NdotV, NdotH, F);
-    Fd *= 1.0f - F;
-    return Fs + Fd;
-}
-
-vec3 shadeFromLight(Light light, vec3 P, vec3 N, vec3 C, vec3 albedo, float roughness, vec3 F0, float metalness) {
-    vec3 L = light.position - P;
-    float NdotL = dot(L, N);
-    if (NdotL <= 0.f)
-        return vec3(0.f);
-
-    float Ld = length(L);
-    NdotL /= Ld;
-    vec3 V = normalize(C - P);
-
-    vec3 brdf = BRDF(albedo, roughness, F0, metalness, V, N, NdotL, L);
-    return light.color * (brdf * NdotL * light.intensity / (Ld * Ld));
-}
-
-vec3 toneMapped(vec3 color) {
-    vec3 x = clamp(color - 0.004f, 0.0f, 1.0f);
-    vec3 x2_times_sholder_strength = x * x * 6.2f;
-    return (x2_times_sholder_strength + x*0.5f)/(x2_times_sholder_strength + x*1.7f + 0.06f);
-}
-
-void main() {
-    vec3 albedo = model.material_params.albedo;
-    if ((model.material_params.flags & HAS_ALBEDO_MAP) != 0) {
-        albedo *= texture(albedo_texture, in_uv).rgb;
-    }
-    const vec3 C = lighting.camera_position;
-    const vec3 P = in_position;
-    const vec3 F0 = model.material_params.F0;
-    const float roughness = model.material_params.roughness;
-    const float metalness = model.material_params.metalness;
-    vec3 N = normalize(in_normal);
-    if ((model.material_params.flags & HAS_NORMAL_MAP) != 0) {
-        vec3 T = normalize(in_tangent);
-        vec3 B = cross(T, N);
-        N = normalize(mat3(T, B, N) * decodeNormal(texture(normal_texture, in_uv)));
-//        N = normalize(rotateNormal(decodeNormal(texture(normal_texture, in_uv)), 1.0f, N));
-//       N = rotate(N, getNormalRotation(decodeNormal(texture(normal_texture, in_uv)), model.material_params.normal_strength));
-    }
-//    N = normalize(rotate(N * model.transform.scale, model.transform.rotation));
-    vec3 color = (
-        shadeFromLight(lighting.key_light , P, N, C, albedo, roughness, F0, metalness) +
-        shadeFromLight(lighting.fill_light, P, N, C, albedo, roughness, F0, metalness) +
-        shadeFromLight(lighting.rim_light , P, N, C, albedo, roughness, F0, metalness)
-    );
-    out_color = vec4(toneMapped(color), 1.0f);
-}
+*/

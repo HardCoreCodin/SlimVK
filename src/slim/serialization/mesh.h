@@ -25,7 +25,10 @@ u32 getSizeInBytes(const Mesh &mesh, u32 *bvh_nodes_size = nullptr) {
         memory_size += sizeof(vec3) * mesh.normals_count;
         memory_size += sizeof(TriangleVertexIndices) * mesh.triangle_count;
     }
-
+    if (mesh.tangents_count) {
+        memory_size += sizeof(vec3) * mesh.tangents_count;
+        memory_size += sizeof(TriangleVertexIndices) * mesh.triangle_count;
+    }
     return memory_size;
 }
 
@@ -50,6 +53,10 @@ bool allocateMemory(Mesh &mesh, memory::MonotonicAllocator *memory_allocator, me
         mesh.vertex_normals          = (vec3*                 )memory_allocator->allocate(sizeof(vec3)                  * mesh.normals_count);
         mesh.vertex_normal_indices   = (TriangleVertexIndices*)memory_allocator->allocate(sizeof(TriangleVertexIndices) * mesh.triangle_count);
     }
+    if (mesh.tangents_count) {
+        mesh.vertex_tangents          = (vec3*                 )memory_allocator->allocate(sizeof(vec3)                  * mesh.tangents_count);
+        mesh.vertex_tangent_indices   = (TriangleVertexIndices*)memory_allocator->allocate(sizeof(TriangleVertexIndices) * mesh.triangle_count);
+    }
     return true;
 }
 
@@ -59,6 +66,7 @@ void writeHeader(const Mesh &mesh, void *file) {
     os::writeToFile((void*)&mesh.edge_count,     sizeof(u32),  file);
     os::writeToFile((void*)&mesh.uvs_count,      sizeof(u32),  file);
     os::writeToFile((void*)&mesh.normals_count,  sizeof(u32),  file);
+    os::writeToFile((void*)&mesh.tangents_count, sizeof(u32),  file);
     writeHeader(mesh.bvh, file);
 }
 void readHeader(Mesh &mesh, void *file) {
@@ -67,6 +75,7 @@ void readHeader(Mesh &mesh, void *file) {
     os::readFromFile(&mesh.edge_count,     sizeof(u32),  file);
     os::readFromFile(&mesh.uvs_count,      sizeof(u32),  file);
     os::readFromFile(&mesh.normals_count,  sizeof(u32),  file);
+    os::readFromFile(&mesh.tangents_count, sizeof(u32),  file);
     readHeader(mesh.bvh, file);
 }
 
@@ -101,6 +110,10 @@ void readContent(Mesh &mesh, void *file) {
         os::readFromFile(mesh.vertex_normals,                sizeof(vec3)                  * mesh.normals_count,  file);
         os::readFromFile(mesh.vertex_normal_indices,         sizeof(TriangleVertexIndices) * mesh.triangle_count, file);
     }
+    if (mesh.tangents_count) {
+        os::readFromFile(mesh.vertex_tangents,                sizeof(vec3)                  * mesh.tangents_count, file);
+        os::readFromFile(mesh.vertex_tangent_indices,         sizeof(TriangleVertexIndices) * mesh.triangle_count, file);
+    }
     readContent(mesh.bvh, file);
 }
 void writeContent(const Mesh &mesh, void *file) {
@@ -117,6 +130,10 @@ void writeContent(const Mesh &mesh, void *file) {
     if (mesh.normals_count) {
         os::writeToFile(mesh.vertex_normals,        sizeof(vec3)                  * mesh.normals_count,  file);
         os::writeToFile(mesh.vertex_normal_indices, sizeof(TriangleVertexIndices) * mesh.triangle_count, file);
+    }
+    if (mesh.tangents_count) {
+        os::writeToFile(mesh.vertex_tangents,        sizeof(vec3)                  * mesh.tangents_count,  file);
+        os::writeToFile(mesh.vertex_tangent_indices, sizeof(TriangleVertexIndices) * mesh.triangle_count, file);
     }
     writeContent(mesh.bvh, file);
 }

@@ -10,6 +10,8 @@
 
 #include "./win32_base.h"
 
+
+
 u8* componentsToByteColor(u8 *component, ByteColor &byte_color, ImageInfo &info) {
     byte_color.B = *(component++);
     byte_color.G = *(component++);
@@ -27,6 +29,19 @@ u8* componentsToPixel(u8 *component, Pixel *pixel, ImageInfo &info, f32 gamma = 
     component = componentsToByteColor(component, byte_color, info);
 
     *pixel = byte_color;
+    if (info.flags.normal) {
+        f32 r = pixel->color.r * 2.0f - 1.0f;
+        f32 g = pixel->color.g * 2.0f - 1.0f;
+//            r *= 8.0f;
+//            g *= 8.0f;
+        f32 l_rcp = 1.0f / sqrtf(r*r + g*g + 1.0f);
+        r *= l_rcp;
+        g *= l_rcp;
+        f32 b = sqrtf(1.0f - r*r - g*g);
+        pixel->color.r = r * 0.5f + 0.5f;
+        pixel->color.g = g * 0.5f + 0.5f;
+        pixel->color.b = b * 0.5f + 0.5f;
+    }
     if (!info.flags.linear) pixel->color.applyGamma(gamma);
 
     return component;
@@ -45,7 +60,7 @@ void componentsToByteColors(u8 *components, ImageInfo &info, ByteColor *byte_col
     u8 *component = components;
     u32 count = info.size;
     Pixel pixel;
-    if (info.flags.linear)
+    if (info.flags.linear && !info.flags.normal)
         for (u32 i = 0; i < count; i++, byte_color++)
             component = componentsToByteColor(component, *byte_color, info);
     else

@@ -303,22 +303,6 @@ int main(int argc, char *argv[]) {
         auto *mips = new TextureMipLoader[texture.mip_count];
         mips->init(texture.width, texture.height);
         componentsToPixels(components, texture, mips->texels);
-        if (texture.flags.normal) {
-            Pixel *pixel = mips->texels;
-            for (u32 i = 0; i < texture.size; i++, pixel++) {
-                f32 r = pixel->color.r * 2.0f - 1.0f;
-                f32 g = pixel->color.g * 2.0f - 1.0f;
-//            r *= 8.0f;
-//            g *= 8.0f;
-                f32 l_rcp = 1.0f / sqrtf(r*r + g*g + 1.0f);
-                r *= l_rcp;
-                g *= l_rcp;
-                f32 b = sqrtf(1.0f - r*r - g*g);
-                pixel->color.r = r * 0.5f + 0.5f;
-                pixel->color.g = g * 0.5f + 0.5f;
-                pixel->color.b = b * 0.5f + 0.5f;
-            }
-        }
 
         mips->load(texture.flags.wrap);
         if (texture.flags.mipmap) loadMips(texture, mips);

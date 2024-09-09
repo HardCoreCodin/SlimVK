@@ -194,8 +194,8 @@ typedef double f64;
 #define MAX_HEIGHT 2160
 #define MAX_WINDOW_SIZE (MAX_WIDTH * MAX_HEIGHT)
 
-#define DEFAULT_WIDTH 480
-#define DEFAULT_HEIGHT 360
+#define DEFAULT_WIDTH 1920
+#define DEFAULT_HEIGHT 1080
 
 #define WINDOW_CONTENT_PIXEL_SIZE 4
 #define WINDOW_CONTENT_SIZE (MAX_WINDOW_SIZE * WINDOW_CONTENT_PIXEL_SIZE)
@@ -215,6 +215,7 @@ typedef double f64;
 #define CUBE_QUAD_UV_COUNT 4
 #define CUBE_FLAT_UV_COUNT 14
 #define CUBE_NORMAL_COUNT 6
+#define CUBE_TANGENT_COUNT 36
 #define CUBE_VERTEX_COUNT 8
 #define CUBE_TRIANGLE_COUNT 12
 #define CUBE_TRIANGLE_EDGE_COUNT 18
@@ -1321,6 +1322,34 @@ struct Image : ImageInfo {
 struct PixelImage : Image<Pixel> {};
 struct FloatImage : Image<f32> {};
 struct ByteColorImage : Image<ByteColor> {};
+struct RawImage : Image<u8> {};
+
+
+union CubeMapImages {
+	struct {
+		RawImage pos_x;
+		RawImage neg_x;
+		RawImage pos_y;
+		RawImage neg_y;
+		RawImage pos_z;
+		RawImage neg_z;
+	};
+	RawImage array[6];
+
+    CubeMapImages() {}
+};
+
+union CubeMapSet {
+	struct {
+		CubeMapImages skybox;
+		CubeMapImages radiance;
+		CubeMapImages irradiance;
+	};
+	CubeMapImages array[3];
+
+    CubeMapSet() {}
+};
+
 
 #define PIXEL_SIZE (sizeof(Pixel))
 #define CANVAS_PIXELS_SIZE (MAX_WINDOW_SIZE * PIXEL_SIZE * 4)

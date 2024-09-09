@@ -96,4 +96,22 @@ struct TexturePack {
         for (u32 i = 0; i < count; i++, texture++, texture_file++)
             load(*texture, texture_file->char_ptr, &memory_allocator);
     }
+
+    TexturePack(u8 count, Texture *textures, const char **files, const char* adjacent_file, u64 memory_base = Terabytes(3)) {
+        u32 memory_size{0};
+        char string_buffer[200];
+        Texture *texture = textures;
+        for (u32 i = 0; i < count; i++, texture++) {
+            String texture_file = String::getFilePath(files[i], string_buffer, adjacent_file);
+            loadHeader(*texture, texture_file.char_ptr);
+            memory_size += getSizeInBytes(*texture);
+        }
+        memory::MonotonicAllocator memory_allocator{memory_size, memory_base};
+
+        texture = textures;
+        for (u32 i = 0; i < count; i++, texture++) {
+            String texture_file = String::getFilePath(files[i], string_buffer, adjacent_file);
+            load(*texture, texture_file.char_ptr, &memory_allocator);
+        }
+    }
 };

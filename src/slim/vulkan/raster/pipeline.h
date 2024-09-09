@@ -18,7 +18,6 @@ namespace raster_render_pipeline {
         alignas(16) Light fill_light;
         alignas(16) Light rim_light;
     };
-
     VkDescriptorSetLayoutBinding descriptor_set_layout_bindings[]{
         DescriptorSetLayoutBindingForVertexUniformBuffer(),
         DescriptorSetLayoutBindingForFragmentUniformBuffer()

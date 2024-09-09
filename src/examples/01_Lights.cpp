@@ -5,6 +5,7 @@
 #include "../slim/scene/selection.h"
 #include "../slim/draw/selection.h"
 #include "../slim/vulkan/raster/pipeline.h"
+#include "../slim/vulkan/raster/skybox.h"
 #include "../slim/vulkan/raster/default_material.h"
 
 #include "../slim/app.h"
@@ -12,7 +13,7 @@
 #include "./images.h"
 
 #define HAS_ALBEDO_MAP 1
-#define HAS_NORMAL_MAP 1
+#define HAS_NORMAL_MAP 2
 #define DRAW_DEPTH 4
 #define DRAW_POSITION 8
 #define DRAW_NORMAL 16
@@ -100,7 +101,7 @@ struct ExampleVulkanApp : SlimApp {
         dog_material.roughness,
         dog_material.reflectivity,
         dog_material.metalness,
-        8.0f,
+        2.0f,
         HAS_ALBEDO_MAP | HAS_NORMAL_MAP
     };
     default_material::MaterialParams rough_material_params = {
@@ -121,11 +122,31 @@ struct ExampleVulkanApp : SlimApp {
     };
     default_material::MaterialParams *material_params = &dog_material_params;
 
-    GPUImage floor_albedo;
-    GPUImage floor_normal;
-    GPUImage dog_albedo;
-    GPUImage dog_normal;
     GPUMesh floor_gpu_mesh;
+
+    GPUImage *textures = nullptr;
+    GPUImage *skybox_maps = nullptr;
+    GPUImage *radiance_maps = nullptr;
+    GPUImage *irradiance_maps = nullptr;
+
+    void initTextures(CubeMapSet *cube_map_sets, u32 cube_map_sets_count, RawImage *texture_images, u32 texture_count) {
+	    if (texture_images && texture_count) {
+		    textures = new GPUImage[texture_count];
+		    for (u32 i = 0; i < texture_count; i++)
+                textures[i].createTexture(texture_images[i], image_file_names[i]);
+        }
+			
+	    if (cube_map_sets && cube_map_sets_count) {
+		    skybox_maps = new GPUImage[cube_map_sets_count];
+		    radiance_maps = new GPUImage[cube_map_sets_count];
+		    irradiance_maps = new GPUImage[cube_map_sets_count];
+		    for (u32 i = 0; i < cube_map_sets_count; i++) {
+                skybox_maps[i].createCubeMap(cube_map_sets[i].skybox, cube_map_sets_names[i][0]);
+                radiance_maps[i].createCubeMap(cube_map_sets[i].radiance, cube_map_sets_names[i][1]);
+                irradiance_maps[i].createCubeMap(cube_map_sets[i].irradiance, cube_map_sets_names[i][2]);
+		    }
+	    }  
+    }
 
     void OnInit() override {
         floor_gpu_mesh.create(floor_mesh);
@@ -135,48 +156,12 @@ struct ExampleVulkanApp : SlimApp {
         scene.updateAABBs();
         scene.updateBVH(2);
 
-        for (u8 i = 0; i < ImageCount; i++) {
-            TextureMip& texture{textures[i].mips[0]};
-            ByteColorImage& image{images[i]};
-            for (u32 y = 0; y < image.height; y++) {
-                for (u32 x = 0; x < image.width; x++) {
-                    ByteColor &pixel{image.content[image.width * y + x]};
-                    TexelQuad &texel{texture.texel_quads[image.width * y + y + x]};
-                    pixel.R = texel.R.BR;
-                    pixel.G = texel.G.BR;
-                    pixel.B = texel.B.BR;
-                    pixel.A = 255;
-                }
-            }
-        }
-
-        dog_albedo.createTextureFromPixels(dog_albedo_image.content,
-                                           dog_albedo_image.width,
-                                           dog_albedo_image.height,
-                                             transient_graphics_command_buffer,
-                                             image_file_names[Dog_Albedo]);
-
-        dog_normal.createTextureFromPixels(dog_normal_image.content,
-                                           dog_normal_image.width,
-                                           dog_normal_image.height,
-                                             transient_graphics_command_buffer,
-                                             image_file_names[Dog_Normal], VK_FORMAT_B8G8R8A8_UNORM);
-
-        floor_albedo.createTextureFromPixels(floor_albedo_image.content,
-                                             floor_albedo_image.width,
-                                             floor_albedo_image.height,
-                                             transient_graphics_command_buffer,
-                                             image_file_names[Floor_Albedo]);
-
-        floor_normal.createTextureFromPixels(floor_normal_image.content,
-                                             floor_normal_image.width,
-                                             floor_normal_image.height,
-                                             transient_graphics_command_buffer,
-                                             image_file_names[Floor_Normal], VK_FORMAT_B8G8R8A8_UNORM);
+        initTextures(cube_map_sets.array, CUBE_MAP_SETS_COUNT, images, ImageCount);
 
         raster_render_pipeline::create();
-        default_material::create(&floor_albedo, 4);
+        default_material::create(textures, 4);
         line_rendering::create();
+        skybox_renderer::create(skybox_maps[0]);
     }
 
     void OnWindowResize(u16 width, u16 height) override {
@@ -195,6 +180,7 @@ struct ExampleVulkanApp : SlimApp {
     }
 
     void OnRenderMainPass(GraphicsCommandBuffer &command_buffer) override {
+
         default_material::bind(command_buffer, debug_flags);
         mesh_group.vertex_buffer.bind(command_buffer);
         for (u32 g = 0; g < scene.counts.geometries; g++) {
@@ -216,6 +202,11 @@ struct ExampleVulkanApp : SlimApp {
                 }
             }
         }
+
+        mat3 camera_ray_matrix = camera.orientation;
+        camera_ray_matrix.Z *= camera.focal_length;
+		camera_ray_matrix.X /= viewport.dimensions.height_over_width;
+        skybox_renderer::draw(command_buffer, Mat4(camera_ray_matrix));
 
         mat4 view_projection = raster_render_pipeline::camera_uniform_data.view * raster_render_pipeline::camera_uniform_data.proj;
         if (controls::is_pressed::alt) drawSelection(selection, command_buffer, view_projection, scene.meshes);
@@ -273,10 +264,15 @@ struct ExampleVulkanApp : SlimApp {
             if (key == '7') {debug_flags = DRAW_ALBEDO;   debug_maps = 0; }
             if (key == '6') {debug_flags = DRAW_NORMAL;   debug_maps = HAS_NORMAL_MAP; }
             if (key == '8') {debug_flags = DRAW_ALBEDO;   debug_maps = HAS_ALBEDO_MAP; }
+            if (key == 'Z') {dog_material_params.normal_strength -= 0.2f; if (dog_material_params.normal_strength < 0.0f) dog_material_params.normal_strength = 0.0f; }
+            if (key == 'X') {dog_material_params.normal_strength += 0.2f; if (dog_material_params.normal_strength > 4.0f) dog_material_params.normal_strength = 4.0f; }
+            if (key == 'C') {floor_material_params.normal_strength -= 0.2f; if (floor_material_params.normal_strength < 0.0f) floor_material_params.normal_strength = 0.0f; }
+            if (key == 'V') {floor_material_params.normal_strength += 0.2f; if (floor_material_params.normal_strength > 4.0f) floor_material_params.normal_strength = 4.0f; }
         }
     }
 
     void OnShutdown() override {
+        skybox_renderer::destroy();
         default_material::destroy();
         line_rendering::destroy();
         raster_render_pipeline::destroy();
@@ -284,10 +280,12 @@ struct ExampleVulkanApp : SlimApp {
         mesh_group.edge_buffer.destroy();
         floor_gpu_mesh.destroy();
 
-        floor_albedo.destroy();
-        floor_normal.destroy();
-        dog_albedo.destroy();
-        dog_normal.destroy();
+        for (u32 i = 0; i < ImageCount; i++) textures[i].destroy();
+        for (u32 i = 0; i < CUBE_MAP_SETS_COUNT; i++) {
+            skybox_maps[i].destroy();
+            radiance_maps[i].destroy();
+            irradiance_maps[i].destroy();
+        }
     }
 };
 
