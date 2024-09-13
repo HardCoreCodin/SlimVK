@@ -134,7 +134,7 @@ namespace gpu {
                 return false;
             }
 
-            VkQueueFamilyProperties queue_families[5];
+            VkQueueFamilyProperties queue_families[16];
             unsigned int queue_family_count = 0;
             vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &queue_family_count, nullptr);
             vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &queue_family_count, queue_families);

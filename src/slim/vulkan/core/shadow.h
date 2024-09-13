@@ -62,6 +62,12 @@ namespace gpu {
 			frame_buffer.create(width, height, render_pass.handle, &image.view, 1);
 
 			return true;
-        }
-    }
+		}
+
+		void destroy() {
+			frame_buffer.destroy();
+			image.destroy();
+			render_pass.destroy();
+		}
+	}
 }

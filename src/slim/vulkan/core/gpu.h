@@ -57,7 +57,7 @@ namespace gpu {
             SLIM_LOG_FATAL("Failed to find a supported format!")
         }
 
-        //shadow_pass::create(2048, 2048);
+        shadow_pass::create(2048, 2048);
 
         present::render_pass.create({
             "main_render_pass",
@@ -130,6 +130,8 @@ namespace gpu {
 
         present::destroySwapchain();
         present::render_pass.destroy();
+
+        shadow_pass::destroy();
 
         SLIM_LOG_INFO("Destroying command pools...");
 
