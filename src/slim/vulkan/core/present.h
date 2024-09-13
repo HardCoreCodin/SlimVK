@@ -76,9 +76,11 @@ namespace gpu {
                 *(--dst) = (char)((u8)'0' + index);
 
                 // Create depth image and its view.
-                depth_image.create(width, height, depth_format, name,
+                depth_image.create(width, height, depth_format, 
+                    (u8)GPUImageFlag::SAMPLE | 
+                    (u8)GPUImageFlag::VIEW, name,
                                    VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
-                                   VK_IMAGE_ASPECT_DEPTH_BIT, false, true, false);
+                                   VK_IMAGE_ASPECT_DEPTH_BIT);
 
                 regenerateFrameBuffer(width, height);
 

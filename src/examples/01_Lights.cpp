@@ -134,16 +134,16 @@ struct ExampleVulkanApp : SlimApp {
 	    if (texture_images && texture_count) {
 		    textures = new GPUImage[texture_count];
 		    for (u32 i = 0; i < texture_count; i++)
-                textures[i].createTexture(texture_images[i], image_file_names[i]);
+                textures[i].createTexture(texture_images[i]);//, image_file_names[i]);
         }
 			
 	    if (cube_map_sets && cube_map_sets_count) {
 		    skybox_maps = new GPUImage[cube_map_sets_count];
 		    ibl_maps = new GPUImage[cube_map_sets_count * 2];
 		    for (u32 i = 0; i < cube_map_sets_count; i++) {
-                skybox_maps[i].createCubeMap(cube_map_sets[i].skybox, cube_map_sets_names[i][0]);
-                ibl_maps[i * 2 + 0].createCubeMap(cube_map_sets[i].radiance, cube_map_sets_names[i][1]);
-                ibl_maps[i * 2 + 1].createCubeMap(cube_map_sets[i].irradiance, cube_map_sets_names[i][2]);
+                skybox_maps[i].createCubeMap(cube_map_sets[i].skybox);//, cube_map_sets_names[i][0]);
+                ibl_maps[i * 2 + 0].createCubeMap(cube_map_sets[i].radiance);//, cube_map_sets_names[i][1]);
+                ibl_maps[i * 2 + 1].createCubeMap(cube_map_sets[i].irradiance);//, cube_map_sets_names[i][2]);
 		    }
 	    }  
     }
@@ -185,7 +185,7 @@ struct ExampleVulkanApp : SlimApp {
 		camera_ray_matrix.X /= viewport.dimensions.height_over_width;
         skybox_renderer::draw(command_buffer, Mat4(camera_ray_matrix), skybox_index);
 
-        default_material::bindIBL(command_buffer, skybox_index);
+        default_material::bindIBL(command_buffer, (u8)skybox_index);
         default_material::bind(command_buffer, debug_flags);
         mesh_group.vertex_buffer.bind(command_buffer);
         for (u32 g = 0; g < scene.counts.geometries; g++) {

@@ -20,7 +20,7 @@ namespace gpu {
 //        u8 render_target_count;
 //        RenderTarget* render_targets;
 
-        bool create(const Config &new_config) {
+        bool create(const Config &new_config, VkSubpassDependency *dependencies = nullptr, u32 dependency_count = 0) {
             config = new_config;
 
             // Main sub pass
@@ -133,17 +133,21 @@ namespace gpu {
 
             // Render pass dependencies. TODO: make this configurable.
             VkSubpassDependency dependency{};
-            dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
-//            dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-//            dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-//            dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-            dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
-            dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
-            dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-//            dependency.dstSubpass = 0;
-//            dependency.srcAccessMask = 0;
-//            dependency.dependencyFlags = 0;
-
+            if (!(dependencies && dependency_count)) {
+                dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
+//                dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+//                dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+//                dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+                dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+                dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+                dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+//                dependency.dstSubpass = 0;
+//                dependency.srcAccessMask = 0;
+//                dependency.dependencyFlags = 0;
+                dependencies = &dependency;
+                dependency_count = 1;
+            }
+            
 
             // 1.1 Aspect Reference (disambiguate between depth vs. stencil input attachment to read):
 //            VkInputAttachmentAspectReference aspect_reference {0,depth_input_attachment_index, VK_IMAGE_ASPECT_DEPTH_BIT};
@@ -157,8 +161,8 @@ namespace gpu {
             render_pass_create_info.pAttachments = attachment_descriptions;
             render_pass_create_info.subpassCount = 1;
             render_pass_create_info.pSubpasses = &sub_pass;
-            render_pass_create_info.dependencyCount = 1;
-            render_pass_create_info.pDependencies = &dependency;
+            render_pass_create_info.dependencyCount = dependency_count;
+            render_pass_create_info.pDependencies = dependencies;
 //            render_pass_create_info.pNext = depth_attachment_count > 0 ? &aspect : nullptr;
 //            render_pass_create_info.flags = 0;
 

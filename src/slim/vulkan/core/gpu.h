@@ -9,6 +9,7 @@
 #include "./compute.h"
 #include "./render_target.h"
 #include "./render_pass.h"
+#include "./shadow.h"
 #include "./shader.h"
 #include "./pipeline.h"
 #include "./buffer.h"
@@ -55,6 +56,8 @@ namespace gpu {
             present::depth_format = VK_FORMAT_UNDEFINED;
             SLIM_LOG_FATAL("Failed to find a supported format!")
         }
+
+        //shadow_pass::create(2048, 2048);
 
         present::render_pass.create({
             "main_render_pass",

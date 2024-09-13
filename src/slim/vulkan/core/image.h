@@ -5,6 +5,36 @@
 #include "./command.h"
 
 namespace gpu {
+    enum class GPUImageFlag {
+        REPEAT = 1 << 0,
+        FILTER = 1 << 1,
+        MIPMAP = 1 << 2,
+        SAMPLE = 1 << 3,
+        VIEW   = 1 << 4,
+    };
+
+    struct GPUImageFlags {
+        bool repeat;
+        bool filter;
+        bool mipmap;
+        bool sample;
+        bool view;
+
+        GPUImageFlags(u8 flags = 
+            (u8)GPUImageFlag::REPEAT | 
+            (u8)GPUImageFlag::FILTER | 
+            (u8)GPUImageFlag::MIPMAP | 
+            (u8)GPUImageFlag::SAMPLE | 
+            (u8)GPUImageFlag::VIEW
+        ) : 
+            repeat{(flags & (u8)GPUImageFlag::REPEAT) != 0}, 
+            filter{(flags & (u8)GPUImageFlag::FILTER) != 0}, 
+            mipmap{(flags & (u8)GPUImageFlag::MIPMAP) != 0}, 
+            sample{(flags & (u8)GPUImageFlag::SAMPLE) != 0}, 
+            view{(flags & (u8)GPUImageFlag::VIEW) != 0} 
+        {}
+    };
+
     struct GPUImage {
         VkImage handle;
         VkDeviceMemory memory;
@@ -40,12 +70,10 @@ namespace gpu {
         void create(u32 image_width,
                     u32 image_height,
                     VkFormat format,
-                    const char* image_name,
-                    VkImageUsageFlags usage,
+                    GPUImageFlags flags = {},                  
+                    const char* image_name = "",
+                    VkImageUsageFlags usage_flags = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
                     VkImageAspectFlags view_aspect_flags = VK_IMAGE_ASPECT_COLOR_BIT,
-                    bool mip_map = true,
-                    bool create_view = true,
-                    bool create_sampler = true,
                     VkImageTiling tiling = VK_IMAGE_TILING_OPTIMAL,
                     VkMemoryPropertyFlags image_memory_flags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
                     VkImageViewType view_type = VK_IMAGE_VIEW_TYPE_2D) {
@@ -57,7 +85,7 @@ namespace gpu {
             name = (char*)image_name;
             type = view_type;
             mip_count = 1;
-            if (mip_map)
+            if (flags.mipmap)
                 mip_count += static_cast<uint32_t>(floor(log2(Max(width, height))));
 
             // Creation info.
@@ -72,7 +100,7 @@ namespace gpu {
             image_create_info.format = format;
             image_create_info.tiling = tiling;
             image_create_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-            image_create_info.usage = usage;
+            image_create_info.usage = usage_flags;
             image_create_info.samples = VK_SAMPLE_COUNT_1_BIT;          // TODO: Configurable sample count.
             image_create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;  // TODO: Configurable sharing mode.
             if (type == VK_IMAGE_VIEW_TYPE_CUBE) {
@@ -97,14 +125,14 @@ namespace gpu {
             VK_CHECK(vkBindImageMemory(device, handle, memory, 0))  // TODO: configurable memory offset.
 
             // Create view
-            if (create_view) {
+            if (flags.view) {
                 view = nullptr;
                 createView(type, format, view_aspect_flags);
             }
             // Create Sampler
-            if (create_sampler) {
+            if (flags.sample) {
                 sampler = nullptr;
-                createSampler();
+                createSampler(flags);
             }
         }
 
@@ -136,21 +164,21 @@ namespace gpu {
             VK_SET_DEBUG_OBJECT_NAME(VK_OBJECT_TYPE_IMAGE_VIEW, view, formatted_name);
         }
 
-        void createSampler(bool mip_map = true) {
+        void createSampler(GPUImageFlags flags = {}) {
             VkSamplerCreateInfo samplerInfo{VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
-            samplerInfo.magFilter = VK_FILTER_LINEAR;
-            samplerInfo.minFilter = VK_FILTER_LINEAR;
-            samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-            samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-            samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+            samplerInfo.magFilter = flags.filter ? VK_FILTER_LINEAR : VK_FILTER_NEAREST;
+            samplerInfo.minFilter = samplerInfo.magFilter;
+            samplerInfo.addressModeU = flags.repeat ? VK_SAMPLER_ADDRESS_MODE_REPEAT : VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+            samplerInfo.addressModeV = samplerInfo.addressModeU;
+            samplerInfo.addressModeW = samplerInfo.addressModeU;
             samplerInfo.anisotropyEnable = VK_TRUE;
             samplerInfo.maxAnisotropy = _device::properties.limits.maxSamplerAnisotropy;
-            samplerInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
+            samplerInfo.borderColor = flags.repeat ? VK_BORDER_COLOR_INT_OPAQUE_BLACK : VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
             samplerInfo.unnormalizedCoordinates = VK_FALSE;
             samplerInfo.compareEnable = VK_FALSE;
             samplerInfo.compareOp = VK_COMPARE_OP_ALWAYS;
             samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
-            if (mip_map) samplerInfo.maxLod = (float)mip_count;
+            if (flags.mipmap) samplerInfo.maxLod = (float)mip_count;
 //            samplerInfo.minLod = 0.0f;
 //            samplerInfo.mipLodBias = 0.0f;
 
@@ -248,37 +276,33 @@ namespace gpu {
             u32 texel_size, 
             u32 image_width, 
             u32 image_height,
-            const char *texture_name,
+            GPUImageFlags flags = {}, 
+            const char *texture_name = "",
             VkFormat format = VK_FORMAT_R8G8B8A8_SRGB, 
             VkImageViewType view_type = VK_IMAGE_VIEW_TYPE_2D,
             VkImageAspectFlags view_aspect_flags = VK_IMAGE_ASPECT_COLOR_BIT,
             VkImageTiling tiling = VK_IMAGE_TILING_OPTIMAL,
             VkMemoryPropertyFlags image_memory_flags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-            CommandBuffer *command_buffer = nullptr ,
-            bool mip_map = true,
-            bool create_view = true,
-            bool create_sampler = true
+            CommandBuffer *command_buffer = nullptr
         ) {
             if (!command_buffer) command_buffer = &transient_graphics_command_buffer;
 
             Buffer staging{};
             if (!staging.createAsStaging(texel_size * image_width * image_height * (view_type == VK_IMAGE_VIEW_TYPE_CUBE ? 6 : 1), data))
                 return false;
-
-            VkImageUsageFlags usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
-            if (mip_map)
-                usage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+            
+            VkImageUsageFlags usage_flags = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+            if (flags.mipmap)
+                usage_flags |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;            
 
             create(
                 image_width, 
                 image_height, 
                 format, 
+                flags,
                 texture_name, 
-                usage,
+                usage_flags,
                 view_aspect_flags,
-                mip_map,
-                create_view,
-                create_sampler,
                 tiling,
                 image_memory_flags,
                 view_type
@@ -287,7 +311,7 @@ namespace gpu {
             command_buffer->beginSingleUse();
             transitionLayout(VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, *command_buffer);
             copyFromBuffer(staging, *command_buffer);
-            if (mip_map) {
+            if (flags.mipmap) {
                 // Check if image format supports linear blitting
 //                VkFormatProperties formatProperties;
 //                vkGetPhysicalDeviceFormatProperties(physical_device, format, &formatProperties);
@@ -354,16 +378,14 @@ namespace gpu {
         }
 
         bool createTexture(
-            const RawImage &image, 
+            const RawImage &image,
+            GPUImageFlags flags = {}, 
             const char *name = "",
             VkImageViewType view_type = VK_IMAGE_VIEW_TYPE_2D,
             VkImageAspectFlags view_aspect_flags = VK_IMAGE_ASPECT_COLOR_BIT,
             VkImageTiling tiling = VK_IMAGE_TILING_OPTIMAL,
             VkMemoryPropertyFlags image_memory_flags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-            CommandBuffer *command_buffer = nullptr,
-            bool mip_map = true,
-            bool create_view = true,
-            bool create_sampler = true
+            CommandBuffer *command_buffer = nullptr
         ) {
             u8 *content = image.content;
             if (!image.flags.alpha) {
@@ -384,16 +406,14 @@ namespace gpu {
                 4,
                 image.width,
                 image.height,
+                flags,
                 name,
                 image.flags.normal ? VK_FORMAT_R8G8B8A8_UNORM : VK_FORMAT_R8G8B8A8_SRGB,
                 view_type,
                 view_aspect_flags,
                 tiling,
                 image_memory_flags,
-                command_buffer,
-                mip_map,
-                create_view,
-                create_sampler
+                command_buffer
             );
 
             if (!image.flags.alpha) delete[] content;
@@ -403,14 +423,12 @@ namespace gpu {
 
         bool createCubeMap(
             const CubeMapImages &images,
+            GPUImageFlags flags = {},
             const char *name = "", 
             VkImageAspectFlags view_aspect_flags = VK_IMAGE_ASPECT_COLOR_BIT,
             VkImageTiling tiling = VK_IMAGE_TILING_OPTIMAL,
             VkMemoryPropertyFlags image_memory_flags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-            CommandBuffer *command_buffer = nullptr,
-            bool mip_map = true,
-            bool create_view = true,
-            bool create_sampler = true
+            CommandBuffer *command_buffer = nullptr
         ) {
             RawImage image = images.array[0];
             u32 src_channel_count = image.flags.alpha ? 4 : 3;
@@ -441,16 +459,14 @@ namespace gpu {
                 4,
                 image.width,
                 image.height,
+                flags,
                 name,
                 VK_FORMAT_R8G8B8A8_UNORM,
                 VK_IMAGE_VIEW_TYPE_CUBE,
                 view_aspect_flags,
                 tiling,
                 image_memory_flags,
-                command_buffer,
-                mip_map,
-                create_view,
-                create_sampler
+                command_buffer
             );
 
             delete[] image.content;

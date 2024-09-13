@@ -47,7 +47,7 @@ namespace raster_render_pipeline {
             Mat4(*viewport.camera).inverted(),
             viewport.camera->position,
             scene.lights,
-            scene.counts.lights);
+            (u8)scene.counts.lights);
     }
 
     bool create() {
