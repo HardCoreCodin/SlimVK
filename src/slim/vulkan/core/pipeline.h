@@ -218,40 +218,45 @@ namespace gpu {
         bool create(
             VkRenderPass render_pass_handle,
             VkPipelineLayout pipeline_layout_handle,
-            const VertexShader &vertex_shader,
-            const FragmentShader &fragment_shader,
+            VertexShader *vertex_shader,
+            FragmentShader *fragment_shader = nullptr,
             bool is_wireframe = false
         ) {
             if (handle)
                 return false;
 
-            const Shader *shaders[] = {&vertex_shader, &fragment_shader};
-            VkPipelineShaderStageCreateInfo shaderStages[sizeof(shaders) / sizeof(Shader*)]{};
+            u32 shader_stages_count = 0;
+            const Shader *shaders[] = {vertex_shader, fragment_shader};
+            VkPipelineShaderStageCreateInfo shader_stages[sizeof(shaders) / sizeof(Shader*)]{};
             for (u32 i = 0; i < (sizeof(shaders) / sizeof(Shader*)); i++) {
+                if (shaders[i]== nullptr) break;
+
                 const Shader &shader{*shaders[i]};
-                VkPipelineShaderStageCreateInfo &info{shaderStages[i]};
+                VkPipelineShaderStageCreateInfo &info{shader_stages[i]};
 
                 info = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
                 info.module = shader.handle;
                 info.stage = shader.stage;
                 info.pName = shader.entry_point_name;
                 info.pSpecializationInfo = nullptr;
+                shader_stages_count++;
             }
+            const bool is_shadow = shader_stages_count == 1;
 
             VkPipelineVertexInputStateCreateInfo vertex_input_info = {VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
-            if (vertex_shader.vertex_descriptor) {
+            if (vertex_shader->vertex_descriptor) {
                 // Vertex input
                 VkVertexInputBindingDescription binding_description;
                 binding_description.binding = 0;  // Binding index
-                binding_description.stride = vertex_shader.vertex_descriptor->vertex_input_stride;
+                binding_description.stride = vertex_shader->vertex_descriptor->vertex_input_stride;
                 binding_description.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;  // Move to next data entry for each vertex.
 
                 // Process attributes
                 VkVertexInputAttributeDescription vertex_input_attribute_descriptions[16];
                 u32 vertex_input_offset = 0;
-                for (u32 i = 0; i < vertex_shader.vertex_descriptor->attribute_count; ++i) {
+                for (u32 i = 0; i < vertex_shader->vertex_descriptor->attribute_count; ++i) {
                     // Setup the new attribute.
-                    const VertexAttributeType &type{vertex_shader.vertex_descriptor->attribute_types[i]};
+                    const VertexAttributeType &type{vertex_shader->vertex_descriptor->attribute_types[i]};
                     VkVertexInputAttributeDescription attribute = {};
                     attribute.location = i;
                     attribute.offset = vertex_input_offset;
@@ -265,7 +270,7 @@ namespace gpu {
                 // Attributes
                 vertex_input_info.vertexBindingDescriptionCount = 1;
                 vertex_input_info.pVertexBindingDescriptions = &binding_description;
-                vertex_input_info.vertexAttributeDescriptionCount = vertex_shader.vertex_descriptor->attribute_count;
+                vertex_input_info.vertexAttributeDescriptionCount = vertex_shader->vertex_descriptor->attribute_count;
                 vertex_input_info.pVertexAttributeDescriptions = vertex_input_attribute_descriptions;
             } else {
                 vertex_input_info.vertexAttributeDescriptionCount = 0;
@@ -288,9 +293,9 @@ namespace gpu {
             rasterizer.rasterizerDiscardEnable = VK_FALSE;
             rasterizer.polygonMode = is_wireframe ? VK_POLYGON_MODE_LINE : VK_POLYGON_MODE_FILL;
             rasterizer.lineWidth = 1.0f;
-            rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
+            rasterizer.cullMode = is_shadow ? VK_CULL_MODE_NONE : VK_CULL_MODE_BACK_BIT;
             rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
-//            rasterizer.depthBiasEnable = VK_FALSE;
+            rasterizer.depthBiasEnable = is_shadow ? VK_TRUE : VK_FALSE;
 //            rasterizer.depthBiasConstantFactor = 0.0f;
 //            rasterizer.depthBiasClamp = 0.0f;
 //            rasterizer.depthBiasSlopeFactor = 0.0f;
@@ -303,9 +308,9 @@ namespace gpu {
             multisampling.alphaToOneEnable = VK_FALSE;
 
             VkPipelineDepthStencilStateCreateInfo depth_stencil = {VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};
-            depth_stencil.depthTestEnable = vertex_shader.vertex_descriptor ? VK_TRUE : VK_FALSE;
-            depth_stencil.depthWriteEnable = vertex_shader.vertex_descriptor ? VK_TRUE : VK_FALSE;
-            depth_stencil.depthCompareOp = VK_COMPARE_OP_LESS;
+            depth_stencil.depthTestEnable = vertex_shader->vertex_descriptor ? VK_TRUE : VK_FALSE;
+            depth_stencil.depthWriteEnable = vertex_shader->vertex_descriptor ? VK_TRUE : VK_FALSE;
+            depth_stencil.depthCompareOp = is_shadow ? VK_COMPARE_OP_LESS_OR_EQUAL : VK_COMPARE_OP_LESS;
 //            depth_stencil.depthBoundsTestEnable = VK_FALSE;
 //            depth_stencil.stencilTestEnable = VK_FALSE;
 
@@ -322,24 +327,25 @@ namespace gpu {
             VkPipelineColorBlendStateCreateInfo blend{VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO};
             blend.logicOpEnable = VK_FALSE;
             blend.logicOp = VK_LOGIC_OP_COPY;
-            blend.attachmentCount = 1;
-            blend.pAttachments = &blend_attachment;
+            blend.attachmentCount = is_shadow ? 0 : 1;
+            blend.pAttachments = is_shadow ? nullptr : &blend_attachment;
             blend.blendConstants[0] = 0.0f;
             blend.blendConstants[1] = 0.0f;
             blend.blendConstants[2] = 0.0f;
             blend.blendConstants[3] = 0.0f;
 
-            VkDynamicState dynamic_states[2] = {
+            VkDynamicState dynamic_states[] = {
                 VK_DYNAMIC_STATE_VIEWPORT,
-                VK_DYNAMIC_STATE_SCISSOR
+                VK_DYNAMIC_STATE_SCISSOR,
+                VK_DYNAMIC_STATE_DEPTH_BIAS
             };
             VkPipelineDynamicStateCreateInfo dynamic{VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO};
-            dynamic.dynamicStateCount = 2;
+            dynamic.dynamicStateCount = is_shadow ? 3 : 2;
             dynamic.pDynamicStates = dynamic_states;
 
             VkGraphicsPipelineCreateInfo pipelineInfo{VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO};
-            pipelineInfo.stageCount = 2;
-            pipelineInfo.pStages = shaderStages;
+            pipelineInfo.stageCount = shader_stages_count;
+            pipelineInfo.pStages = shader_stages;
             pipelineInfo.pVertexInputState = &vertex_input_info;
             pipelineInfo.pInputAssemblyState = &input_assembly;
             pipelineInfo.pViewportState = &viewportState;

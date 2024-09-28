@@ -73,7 +73,7 @@ void main()
         if (!pipeline_layout.create(&descriptor_set_layout.handle, 1, &push_constant_spec))
             return false;
 
-        if (!pipeline.create(render_pass->handle, pipeline_layout.handle, vertex_shader, fragment_shader))
+        if (!pipeline.create(render_pass->handle, pipeline_layout.handle, &vertex_shader, &fragment_shader))
             return false;
 
         for (u32 i = 0; i < skybox_images_count; i++)

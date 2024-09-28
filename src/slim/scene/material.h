@@ -3,7 +3,7 @@
 #include "../math/vec2.h"
 #include "../math/vec3.h"
 #include "../math/quat.h"
-
+/*
 #define LIGHT_RADIUS_INTENSITY_FACTOR 64.0f
 #define LIGHT_INTENSITY_RADIUS_FACTOR (1.0f / LIGHT_RADIUS_INTENSITY_FACTOR)
 
@@ -23,7 +23,7 @@ struct Light {
     INLINE_XPU bool isDirectional() const { return flags & Light_IsDirectional; }
     INLINE_XPU bool isPoint() const { return !(isDirectional()); }
 };
-
+*/
 INLINE_XPU f32 ggxTrowbridgeReitz_D(f32 roughness, f32 NdotH) { // NDF
     // http://graphicrants.blogspot.com/2013/08/specular-brdf-reference.html
     f32 a = roughness * roughness;

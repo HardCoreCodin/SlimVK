@@ -209,7 +209,7 @@ namespace gpu {
                 ranges[count] = push_constant_range;
                 ranges[count].offset = offset;
                 offset += ranges[count].size;
-                if (offset >= 128) {
+                if (offset > 128) {
                     SLIM_LOG_ERROR("Failed to add push constant range, out of space")
                     break;
                 }

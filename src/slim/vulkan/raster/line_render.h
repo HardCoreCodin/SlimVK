@@ -70,7 +70,7 @@ void main() {
         if (!pipeline_layout.create(nullptr, 0, &push_constant_spec))
             return false;
 
-        if (!pipeline.create(render_pass->handle, pipeline_layout.handle, vertex_shader, fragment_shader, true))
+        if (!pipeline.create(render_pass->handle, pipeline_layout.handle, &vertex_shader, &fragment_shader, true))
             return false;
 
         if (!box.create(box_mesh))

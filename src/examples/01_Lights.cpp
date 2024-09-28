@@ -6,7 +6,9 @@
 #include "../slim/draw/selection.h"
 #include "../slim/vulkan/raster/pipeline.h"
 #include "../slim/vulkan/raster/skybox.h"
+#include "../slim/vulkan/raster/debug_image.h"
 #include "../slim/vulkan/raster/default_material.h"
+#include "../slim/vulkan/scene/mesh.h"
 
 #include "../slim/app.h"
 
@@ -19,20 +21,28 @@
 #define DRAW_NORMAL 16
 #define DRAW_UVS 32
 #define DRAW_ALBEDO 64
+#define DRAW_IBL 128
+#define DRAW_SHADOW_MAP 256
 
 using namespace gpu;
 
 struct ExampleVulkanApp : SlimApp {
     Camera camera{{-25 * DEG_TO_RAD, 0, 0}, {0, 7, -11}}, *cameras{&camera};
+    CameraRayProjection camera_ray_projection;
     Canvas canvas;
     Viewport viewport{canvas, &camera};
-    CameraRayProjection camera_ray_projection;
-
-    // Scene:
-    Light rim_light{ {1.0f, 0.5f, 0.5f}, 0.9f * 80.0f, {6, 5, 2}};
-    Light glass_light1{ {0.5f, 1.0f, 0.5f}, 40.0f, {-3.3f, 0.6f, -3.0f}};
-    Light glass_light2{ {0.5f, 0.5f, 1.0f}, 40.0f, {-0.6f, 1.75f, -3.15f}};
-    Light *lights{&rim_light};
+    
+    DirectionalLight directional_light{
+        {-60*DEG_TO_RAD, 30*DEG_TO_RAD, 0}, {1.0f, 0.83f, 0.7f}, 1.7f, {0, 25, -20}
+    };
+    PointLight point_lights[2]{
+        {{1.0f, 2.0f, 0.0f}, Blue, 200.0f},
+        {{-4.0f, 3.0f, 0.0f}, Green, 200.0f}
+    };
+    SpotLight spot_lights[2]{
+        {{DEG_TO_RAD*-90, DEG_TO_RAD*0, 0}, {3, 4, 5}, Magenta, 300.0f},
+        {{DEG_TO_RAD*-90, DEG_TO_RAD*0, 0}, {-3, 4, -5}, Cyan, 300.0f}
+    };
 
     enum MaterialID { FloorMaterial, DogMaterial, Rough, Phong, Blinn, Mirror, Glass, MaterialCount };
 
@@ -69,6 +79,7 @@ struct ExampleVulkanApp : SlimApp {
     Mesh dog_mesh;
     Mesh dragon_mesh;
     Mesh floor_mesh{CubeEdgesType::BBox, true};
+    Mesh triangle_mesh;
     Mesh *meshes = &dog_mesh;
     char mesh_file_string_buffers[MeshCount - 1][100]{};
     String mesh_files[MeshCount - 1] = {
@@ -86,15 +97,14 @@ struct ExampleVulkanApp : SlimApp {
                    GeometryType_Mesh, Glass,      Floor};
     Geometry *geometries{&dog};
 
-    Scene scene{{3,1,3,
-                 MaterialCount,0, MeshCount - 1},
-                geometries, cameras, lights, materials, nullptr, nullptr, meshes, mesh_files};
-
+    Scene scene{{3, 1, 1, 2, 2, MaterialCount, 0, MeshCount - 1},
+        geometries, &camera, &directional_light, point_lights, spot_lights, materials, 
+        nullptr, nullptr, meshes, mesh_files};
     SceneTracer scene_tracer{scene.counts.geometries, scene.mesh_stack_size};
     Selection selection{scene, scene_tracer, camera_ray_projection};
 
-    u8 debug_flags = DRAW_NORMAL;
-    u8 debug_maps = 0;
+    u32 debug_flags = DRAW_SHADOW_MAP;
+    u32 debug_maps = 0;
 
     default_material::MaterialParams dog_material_params = {
         dog_material.albedo,
@@ -121,12 +131,15 @@ struct ExampleVulkanApp : SlimApp {
         HAS_ALBEDO_MAP | HAS_NORMAL_MAP
     };
     default_material::MaterialParams *material_params = &dog_material_params;
-
+    
     GPUMesh floor_gpu_mesh;
+    GPUMesh triangle_gpu_mesh;
 
     GPUImage *textures = nullptr;
     GPUImage *skybox_maps = nullptr;
     GPUImage *ibl_maps = nullptr;
+
+    ShadowMap directional_shadhow_maps[VULKAN_MAX_FRAMES_IN_FLIGHT];
 
     u32 skybox_index = 0;
 
@@ -149,6 +162,8 @@ struct ExampleVulkanApp : SlimApp {
     }
 
     void OnInit() override {
+        triangle_mesh.loadTriangle();
+        triangle_gpu_mesh.create(triangle_mesh);
         floor_gpu_mesh.create(floor_mesh);
         mesh_group.create(mesh_files, MeshCount - 1);
 
@@ -157,11 +172,14 @@ struct ExampleVulkanApp : SlimApp {
         scene.updateBVH(2);
 
         initTextures(cube_map_sets.array, CUBE_MAP_SETS_COUNT, images, ImageCount);
+        for (int i = 0; i < VULKAN_MAX_FRAMES_IN_FLIGHT; i++)
+            directional_shadhow_maps[i].create(2048, 2048, 1.0f, 1.0f);
 
         raster_render_pipeline::create();
-        default_material::create(textures, 4, ibl_maps, CUBE_MAP_SETS_COUNT);
+        default_material::create(textures, 4, ibl_maps, CUBE_MAP_SETS_COUNT, directional_shadhow_maps);
         line_rendering::create();
         skybox_renderer::create(skybox_maps, CUBE_MAP_SETS_COUNT);
+        debug_image::create(directional_shadhow_maps, VULKAN_MAX_FRAMES_IN_FLIGHT);
     }
 
     void OnWindowResize(u16 width, u16 height) override {
@@ -178,20 +196,66 @@ struct ExampleVulkanApp : SlimApp {
 
         raster_render_pipeline::update(scene, viewport);
     }
+    
+    virtual void OnRender() {
+        GraphicsCommandBuffer &command_buffer{*gpu::graphics_command_buffer};
 
-    void OnRenderMainPass(GraphicsCommandBuffer &command_buffer) override {
-        mat3 camera_ray_matrix = camera.orientation;
-        camera_ray_matrix.Z *= camera.focal_length;
-		camera_ray_matrix.X /= viewport.dimensions.height_over_width;
-        skybox_renderer::draw(command_buffer, Mat4(camera_ray_matrix), skybox_index);
+        directional_shadhow_maps[present::current_frame].beginWrite(command_buffer);
+        mesh_group.vertex_buffer.bind(command_buffer);
+        for (u32 g = 0; g < scene.counts.geometries; g++) {
+            shadow_pass::setModel(command_buffer, Mat4(geometries[g].transform) * scene.directional_lights[0].shadowMapMatrix());
+            if (g == Floor) {
+                floor_gpu_mesh.vertex_buffer.bind(command_buffer);
+                floor_gpu_mesh.vertex_buffer.draw(command_buffer);
+            } 
+            else {
+                //continue;
+                if (g == Dog) default_material::bindTextures(command_buffer, 1);
+                for (u32 m = 0, first_index = 0; m < (MeshCount - 1); m++) {
+                    u32 vertex_count = mesh_group.mesh_triangle_counts[m] * 3;
+                    if (m == geometries[g].id) {
+                        mesh_group.vertex_buffer.draw(command_buffer, vertex_count, (i32)first_index);
+                        break;
+                    } else first_index += vertex_count;
+                }
+            }
+        }
+        directional_shadhow_maps[present::current_frame].endWrite(command_buffer);
 
+        gpu::beginRenderPass();
+        //debug_image::draw(command_buffer, present::current_frame);
+        //gpu::endRenderPass();
+        //return;
+      
+        if (debug_flags == 0) {
+            mat3 camera_ray_matrix = camera.orientation;
+            camera_ray_matrix.Z *= camera.focal_length;
+		    camera_ray_matrix.X /= viewport.dimensions.height_over_width;
+            skybox_renderer::draw(command_buffer, Mat4(camera_ray_matrix), skybox_index);
+        }
+
+        default_material::bindDirectionalShadowMap(command_buffer);
         default_material::bindIBL(command_buffer, (u8)skybox_index);
         default_material::bind(command_buffer, debug_flags);
+        if (debug_flags & DRAW_SHADOW_MAP) {
+            raster_render_pipeline::update({}, {}, {}, 
+            scene.point_lights,
+            (u8)scene.counts.point_lights,
+            scene.directional_lights[0]);
+            default_material::setModel(command_buffer, {}, {}, debug_maps | debug_flags);
+            default_material::bindTextures(command_buffer, 0);
+            //triangle_gpu_mesh.vertex_buffer.bind(command_buffer);
+            //triangle_gpu_mesh.vertex_buffer.draw(command_buffer);
+            vkCmdDraw(command_buffer.handle, 3, 1, 0, 0);
+            gpu::endRenderPass();
+            return;
+        }
+
         mesh_group.vertex_buffer.bind(command_buffer);
         for (u32 g = 0; g < scene.counts.geometries; g++) {
             default_material::setModel(command_buffer, geometries[g].transform,
-                                       material_params[g],
-                                       (material_params[g].flags & debug_maps) | debug_flags);
+                material_params[g],
+                (material_params[g].flags & debug_maps) | debug_flags);
             if (g == Floor) {
                 default_material::bindTextures(command_buffer, 0);
                 floor_gpu_mesh.vertex_buffer.bind(command_buffer);
@@ -208,27 +272,20 @@ struct ExampleVulkanApp : SlimApp {
             }
         }
 
-        mat4 view_projection = raster_render_pipeline::camera_uniform_data.view * raster_render_pipeline::camera_uniform_data.proj;
-        if (controls::is_pressed::alt) drawSelection(selection, command_buffer, view_projection, scene.meshes);
 
-//        line_rendering::pipeline.bind(command_buffer);
-//        mesh_group.edge_buffer.bind(command_buffer);
-//        for (u32 g = 0; g < scene.counts.geometries; g++) {
-//            line_rendering::setModel(command_buffer, Mat4(geometries[g].transform) * view_projection);
-//
-//            if (g == Floor) {
-//                floor_gpu_mesh.edge_buffer.bind(command_buffer);
-//                floor_gpu_mesh.edge_buffer.draw(command_buffer);
-//            } else {
-//                for (u32 m = 0, first_index = 0; m < (MeshCount - 1); m++) {
-//                    u32 vertex_count = mesh_group.mesh_triangle_counts[m] * 3 * 2;
-//                    if (m == geometries[g].id) {
-//                        mesh_group.edge_buffer.draw(command_buffer, vertex_count, (i32)first_index);
-//                        break;
-//                    } else first_index += vertex_count;
-//                }
-//            }
-//        }
+        mat4 view_projection_matrix = raster_render_pipeline::camera_uniform_data.view * raster_render_pipeline::camera_uniform_data.proj;
+                
+        for (u32 i = 0; i < scene.counts.point_lights; i++) 
+            line_rendering::drawBox(command_buffer, scene.point_lights[i].transformationMatrix() * view_projection_matrix, BrightCyan, 0.5f);
+		
+        for (u32 i = 0; i < scene.counts.spot_lights; i++)  
+            line_rendering::drawBox(command_buffer, scene.spot_lights[i].transformationMatrix() * view_projection_matrix, BrightBlue, 0.5f);
+        line_rendering::drawBox(command_buffer, scene.directional_lights[0].transformationMatrix() * view_projection_matrix, BrightYellow, 0.5f);
+		line_rendering::drawBox(command_buffer, scene.directional_lights[0].shadowBoundsMatrix() * view_projection_matrix, BrightYellow, 0.5f);
+		
+        if (controls::is_pressed::alt) drawSelection(selection, command_buffer, view_projection_matrix, scene.meshes);
+      
+        gpu::endRenderPass();
     }
 
     void OnMouseButtonDown(mouse::Button &mouse_button) override {
@@ -264,15 +321,27 @@ struct ExampleVulkanApp : SlimApp {
             if (key == '7') {debug_flags = DRAW_ALBEDO;   debug_maps = 0; }
             if (key == '6') {debug_flags = DRAW_NORMAL;   debug_maps = HAS_NORMAL_MAP; }
             if (key == '8') {debug_flags = DRAW_ALBEDO;   debug_maps = HAS_ALBEDO_MAP; }
+            if (key == '9') {debug_flags = DRAW_SHADOW_MAP;debug_maps = 0; }
             if (key == 'B') skybox_index = (skybox_index + 1) % 2;
             if (key == 'Z') {dog_material_params.normal_strength -= 0.2f; if (dog_material_params.normal_strength < 0.0f) dog_material_params.normal_strength = 0.0f; }
             if (key == 'X') {dog_material_params.normal_strength += 0.2f; if (dog_material_params.normal_strength > 4.0f) dog_material_params.normal_strength = 4.0f; }
             if (key == 'C') {floor_material_params.normal_strength -= 0.2f; if (floor_material_params.normal_strength < 0.0f) floor_material_params.normal_strength = 0.0f; }
             if (key == 'V') {floor_material_params.normal_strength += 0.2f; if (floor_material_params.normal_strength > 4.0f) floor_material_params.normal_strength = 4.0f; }
         }
+        if (controls::is_pressed::shift)
+        {
+            constexpr float speed = 0.1f;
+            if (move.right)    directional_light.position.x += speed;
+            if (move.left)     directional_light.position.x -= speed;
+            if (move.up)       directional_light.position.y += speed;
+            if (move.down)     directional_light.position.y -= speed;
+            if (move.forward)  directional_light.position.z += speed;
+            if (move.backward) directional_light.position.z -= speed;
+        }
     }
 
     void OnShutdown() override {
+        debug_image::destroy();
         skybox_renderer::destroy();
         default_material::destroy();
         line_rendering::destroy();
@@ -280,6 +349,7 @@ struct ExampleVulkanApp : SlimApp {
         mesh_group.vertex_buffer.destroy();
         mesh_group.edge_buffer.destroy();
         floor_gpu_mesh.destroy();
+        triangle_gpu_mesh.destroy();
 
         for (u32 i = 0; i < ImageCount; i++) textures[i].destroy();
         for (u32 i = 0; i < CUBE_MAP_SETS_COUNT; i++) {
@@ -287,6 +357,8 @@ struct ExampleVulkanApp : SlimApp {
             ibl_maps[i * 2 + 0].destroy();
             ibl_maps[i * 2 + 1].destroy();
         }
+        
+        for (u32 i = 0; i < VULKAN_MAX_FRAMES_IN_FLIGHT; i++) directional_shadhow_maps[i].destroy();
     }
 };
 

@@ -166,21 +166,31 @@ namespace gpu {
 
         void createSampler(GPUImageFlags flags = {}) {
             VkSamplerCreateInfo samplerInfo{VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
-            samplerInfo.magFilter = flags.filter ? VK_FILTER_LINEAR : VK_FILTER_NEAREST;
-            samplerInfo.minFilter = samplerInfo.magFilter;
-            samplerInfo.addressModeU = flags.repeat ? VK_SAMPLER_ADDRESS_MODE_REPEAT : VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+            if (flags.repeat) {
+                samplerInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
+                samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+            } else {
+                samplerInfo.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
+                samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+            }
             samplerInfo.addressModeV = samplerInfo.addressModeU;
             samplerInfo.addressModeW = samplerInfo.addressModeU;
-            samplerInfo.anisotropyEnable = VK_TRUE;
-            samplerInfo.maxAnisotropy = _device::properties.limits.maxSamplerAnisotropy;
-            samplerInfo.borderColor = flags.repeat ? VK_BORDER_COLOR_INT_OPAQUE_BLACK : VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
-            samplerInfo.unnormalizedCoordinates = VK_FALSE;
-            samplerInfo.compareEnable = VK_FALSE;
-            samplerInfo.compareOp = VK_COMPARE_OP_ALWAYS;
+            if (flags.filter) {
+                samplerInfo.magFilter = VK_FILTER_LINEAR;
+                samplerInfo.maxAnisotropy = _device::properties.limits.maxSamplerAnisotropy;
+            } else {
+                samplerInfo.magFilter = VK_FILTER_NEAREST;
+                samplerInfo.maxAnisotropy = 1.0f;
+                samplerInfo.unnormalizedCoordinates = VK_FALSE;
+            }
+            samplerInfo.minFilter = samplerInfo.magFilter;
             samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+            //samplerInfo.minLod = 0.0f;
+            //samplerInfo.mipLodBias = 0.0f;
+                samplerInfo.unnormalizedCoordinates = VK_FALSE;
+                samplerInfo.compareEnable = VK_FALSE;
+                samplerInfo.compareOp = VK_COMPARE_OP_ALWAYS;
             if (flags.mipmap) samplerInfo.maxLod = (float)mip_count;
-//            samplerInfo.minLod = 0.0f;
-//            samplerInfo.mipLodBias = 0.0f;
 
             VK_CHECK(vkCreateSampler(device, &samplerInfo, nullptr, &sampler))
         }
@@ -473,9 +483,10 @@ namespace gpu {
             return result;
         }
 
-        void writeDescriptor(VkDescriptorSet descriptor_set, u32 binding_index) const {
+        void writeDescriptor(VkDescriptorSet descriptor_set, u32 binding_index, 
+                             VkImageLayout image_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) const {
             VkDescriptorImageInfo imageInfo{};
-            imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            imageInfo.imageLayout = image_layout;
             imageInfo.imageView = view;
             imageInfo.sampler = sampler;
 
@@ -486,7 +497,7 @@ namespace gpu {
             descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
             descriptorWrite.descriptorCount = 1;
             descriptorWrite.pImageInfo = &imageInfo;
-
+            
             vkUpdateDescriptorSets(device, 1, &descriptorWrite, 0, nullptr);
         }
 

@@ -8,6 +8,8 @@
 #define DRAW_NORMAL 16
 #define DRAW_UVS 32
 #define DRAW_ALBEDO 64
+#define DRAW_IBL 128
+#define DRAW_SHADOW_MAP 256
 
 layout(location = 0) in vec3 in_position;
 layout(location = 1) in vec3 in_normal;
@@ -18,6 +20,9 @@ layout(location = 0) out vec4 out_color;
 
 layout(set = 1, binding = 0) uniform sampler2D albedo_texture;
 layout(set = 1, binding = 1) uniform sampler2D normal_texture;
+layout(set = 2, binding = 0) uniform samplerCube radiance_map;
+layout(set = 2, binding = 1) uniform samplerCube irradiance_map;
+layout(set = 3, binding = 0) uniform sampler2D directional_shadow_map_texture;
 
 struct ModelTransform {
     vec4 rotation;
@@ -60,11 +65,15 @@ vec3 rotateNormal(vec3 Ng, vec4 normal_sample, float magnitude) {
 }
 
 void main() {
-    if      ((model.material_params.flags & DRAW_DEPTH   ) != 0) out_color = vec4(vec3(max(in_position.z * 0.00001f, 1.0f)), 1.0f);
-    else if ((model.material_params.flags & DRAW_POSITION) != 0) out_color = vec4(clamp(in_position, 0.0, 1.0f), 1.0f);
-    else if ((model.material_params.flags & DRAW_UVS     ) != 0) out_color = vec4(fract(1000.0f + in_uv.x), fract(1000.0f + in_uv.y), 0.0f, 1.0f);
-    else if ((model.material_params.flags & DRAW_ALBEDO  ) != 0) {
-        if ((model.material_params.flags & HAS_ALBEDO_MAP) != 0) {
+    if      ((model.material_params.flags & DRAW_SHADOW_MAP) != 0) {
+        float s = texture(directional_shadow_map_texture, in_position.xy * 0.5f + 0.5f).r;
+        out_color = vec4(vec3(s), 1.0f);
+    }
+    else if ((model.material_params.flags & DRAW_DEPTH     ) != 0) out_color = vec4(vec3(max(in_position.z * 0.00001f, 1.0f)), 1.0f);
+    else if ((model.material_params.flags & DRAW_POSITION  ) != 0) out_color = vec4(clamp(in_position, 0.0, 1.0f), 1.0f);
+    else if ((model.material_params.flags & DRAW_UVS       ) != 0) out_color = vec4(fract(1000.0f + in_uv.x), fract(1000.0f + in_uv.y), 0.0f, 1.0f);
+    else if ((model.material_params.flags & DRAW_ALBEDO    ) != 0) {
+        if (( model.material_params.flags & HAS_ALBEDO_MAP ) != 0) {
             out_color = vec4(texture(albedo_texture, in_uv).rgb * model.material_params.albedo, 1.0f);
         } else {
             out_color = vec4(model.material_params.albedo, 1.0f);

@@ -23,12 +23,7 @@ struct SlimApp {
     virtual void OnMousePositionSet(i32 x, i32 y) {};
     virtual void OnMouseMovementSet(i32 x, i32 y) {};
     virtual void OnMouseRawMovementSet(i32 x, i32 y) {};
-    virtual void OnRenderMainPass(gpu::GraphicsCommandBuffer &command_buffer) {};
-    virtual void OnRender() {
-        gpu::beginRenderPass();
-        OnRenderMainPass(*gpu::graphics_command_buffer);
-        gpu::endRenderPass();
-    };
+    virtual void OnRender() {};
     virtual void OnConfigureMainRenderPass(gpu::RenderPass &main_render_pass) {};
     virtual void OnUpdate(f32 delta_time) {};
     virtual void OnWindowRedraw() {

@@ -6,19 +6,22 @@
 #define ONE_OVER_PI (1.0f/pi)
 
 #define HAS_ALBEDO_MAP 1
-#define HAS_NORMAL_MAP 1
+#define HAS_NORMAL_MAP 2
 #define DRAW_DEPTH 4
 #define DRAW_POSITION 8
 #define DRAW_NORMAL 16
 #define DRAW_UVS 32
 #define DRAW_ALBEDO 64
+#define DRAW_IBL 128
+#define DRAW_SHADOW_MAP 256
+
 
 #define EPS 0.0001f
-struct Light {
-    vec3 color;
-    float intensity;
-    vec3 position;
-    uint flags;
+
+struct Light 
+{
+	vec4 color_and_intensity;
+	vec4 position_or_direction_and_type;
 };
 
 layout(location = 0) in vec3 in_position;
@@ -29,16 +32,16 @@ layout(location = 3) in vec2 in_uv;
 layout(location = 0) out vec4 out_color;
 
 layout(binding = 1) uniform LightingUniform {
+    mat4 directional_light_transform;
     vec4 camera_position_and_IBL_intensity;
-    Light key_light;
-    Light fill_light;
-    Light rim_light;
+    Light lights[4];
 } lighting;
 
 layout(set = 1, binding = 0) uniform sampler2D albedo_texture;
 layout(set = 1, binding = 1) uniform sampler2D normal_texture;
 layout(set = 2, binding = 0) uniform samplerCube radiance_map;
 layout(set = 2, binding = 1) uniform samplerCube irradiance_map;
+layout(set = 3, binding = 0) uniform sampler2D directional_shadow_map_texture;
 
 struct ModelMaterialParams {
     vec3 albedo;
@@ -128,18 +131,63 @@ Radiance BRDF(vec3 albedo, vec3 V, vec3 N, float NdotL, vec3 L) {
 	return rad;
 }
 
-vec3 shadeFromLight(Light light, vec3 P, vec3 N, vec3 C, vec3 albedo) {
-    vec3 L = light.position - P;
-    float NdotL = dot(L, N);
-    if (NdotL <= 0.f)
-        return vec3(0.f);
+vec3 shadeFromLight(vec3 light, vec3 L, vec3 N, vec3 albedo) {    
+	float NdotL = dot(L, N);
+    if (NdotL <= 0.0f)
+        return vec3(0.0f);
 
     float Ld = length(L);
     NdotL /= Ld;
-    vec3 V = normalize(C - P);
+    vec3 V = normalize(lighting.camera_position_and_IBL_intensity.xyz - in_position);
 
     Radiance rad = BRDF(albedo, V, N, NdotL, L);
-    return light.color * ((rad.Fd + rad.Fs) * NdotL * light.intensity / (Ld * Ld));
+    return (rad.Fd + rad.Fs) * light * NdotL;
+}
+
+float calcShadowFactorForDirectionalLight(vec3 lightDir, vec3 N)
+{
+    vec4 directional_light_space_pos = lighting.directional_light_transform * vec4(in_position, 1.0);
+	vec3 projCoords = directional_light_space_pos.xyz / directional_light_space_pos.w;
+	projCoords = projCoords * 0.5 + 0.5;
+	float currentDepth = projCoords.z;	
+	float closestDepth = texture(directional_shadow_map_texture, projCoords.xy).r;
+	
+	float bias = max(0.05 * (1.0 - dot(N, lightDir)), 0.0005);
+	
+	float shadow = 0.0;
+	vec2 texel_size = 1.0 / textureSize(directional_shadow_map_texture, 0);
+	for(int x = -1; x <= 1; ++x)
+	{
+		for(int y = -1; y <= 1; ++y)
+		{
+			float pcfDepth = texture(directional_shadow_map_texture, projCoords.xy + vec2(x,y) * texel_size).r;
+			shadow += currentDepth - bias > pcfDepth ? 1.0 : 0.0;
+		}
+	}
+	
+	shadow /= 9.0;
+	if(projCoords.z > 1.0)
+	{
+		shadow = 0.0;
+	}
+	
+	return shadow;
+}
+
+vec3 shadeFromDirectionalLight(vec3 radiance, vec3 L, vec3 N, vec3 albedo)
+{
+	float shadow = calcShadowFactorForDirectionalLight(L, N);
+	return (1.0 - shadow) * shadeFromLight(radiance, L, N, albedo);
+}
+
+vec3 shadeFromPointLight(vec3 radiance, vec3 position, vec3 N, vec3 albedo)
+{
+	vec3 L = position - in_position;
+	float distance = length(L);
+	L = normalize(L);
+	
+	float shadow = 0.0f;// CalcPointShadowFactor(pLight, shadowIndex);
+	return (1.0 - shadow) * shadeFromLight(radiance, L, N, albedo) / (distance * distance);
 }
 
 vec3 toneMapped(vec3 color) {
@@ -162,12 +210,24 @@ void main() {
         //N = normalize(mat3(T, B, N) * decodeNormal(texture(normal_texture, in_uv)));
         N = normalize(rotateNormal(N, texture(normal_texture, in_uv), model.material_params.normal_strength));
     }
-    vec3 color = (
-        shadeFromLight(lighting.key_light , P, N, C, albedo) +
-        shadeFromLight(lighting.fill_light, P, N, C, albedo) +
-        shadeFromLight(lighting.rim_light , P, N, C, albedo)
-    );
-    
+
+    vec3 color = vec3(0.0f);
+    for (int i = 0; i < 4; i++)
+    {
+        Light light = lighting.lights[i];
+        vec3 radiance = light.color_and_intensity.xyz * light.color_and_intensity.w;  
+        if (light.position_or_direction_and_type.w == 0.0f)
+        {
+            vec3 direction = light.position_or_direction_and_type.xyz;
+            color += shadeFromDirectionalLight(radiance, direction, N, albedo);
+        }
+        else
+        {
+            vec3 position = light.position_or_direction_and_type.xyz;
+            color += shadeFromPointLight(radiance, position, N, albedo);
+        }
+    }
+
     const float IBL_intensity = lighting.camera_position_and_IBL_intensity.w;
     if (IBL_intensity != 0.0f) {
         vec3 V = normalize(C - P);
@@ -176,8 +236,34 @@ void main() {
 		rad.Fs *= texture(radiance_map, normalize(reflect(V, N))).rgb;
 		color += (rad.Fd + rad.Fs) * IBL_intensity;
 	} 
-    
+
     out_color = vec4(toneMapped(color), 1.0f);
+    return;
+    vec4 directional_light_space_pos = lighting.directional_light_transform * vec4(in_position, 1.0);
+	vec3 projCoords = directional_light_space_pos.xyz / directional_light_space_pos.w;
+	projCoords = projCoords * 0.5 + 0.5;
+    /*out_color = vec4(projCoords.xy, 0.0f, 1.0f);
+    if (out_color.r < 0.0f ||
+        out_color.r > 1.0f ||
+        out_color.g < 0.0f ||
+        out_color.g > 1.0f )
+    {
+        out_color.g = 0.0f;
+        out_color.r = out_color.b = 1.0f;  
+    }
+    return;*/
+    //else
+    {
+	    float closestDepth = texture(directional_shadow_map_texture, projCoords.xy).r;
+        if (closestDepth < 0.0f ||
+            closestDepth > 1.0f)
+        {
+            out_color.g = 0.0f;
+            out_color.r = out_color.b = 1.0f;  
+        }
+        else
+            out_color = vec4(vec3(closestDepth), 1.0f);
+    }
 }
 
 

@@ -241,12 +241,32 @@ BVHNode CUBE_BVH_NODES[] = { // BVHNodes:
 //        }
 //        printf("}\n\n");
 
+const vec3 TRIANGLE_VERTEX_POSITIONS[] = {
+    {1.0f, -1.0f, 1.0f}, 
+    {3.0f, -1.0f, 1.0f}, 
+    {-1.0f, 3.0f, 1.0f}
+};
+
+
+const TriangleVertexIndices TRIANGLE_VERTEX_POSITION_INDICES[] = {
+    {0, 1, 2}
+};
+
+
+const EdgeVertexIndices TRIANGLE_EDGES[] = {
+    {0, 1},
+    {1, 2},
+    {2, 0},
+};
+
+
 #define L (-1.0f)
 #define R (+1.0f)
 #define B (-1.0f)
 #define T (+1.0f)
 #define K (-1.0f)
 #define F (+1.0f)
+
 
 const vec3 CUBE_VERTEX_POSITIONS[] = {
     {L, B, K},
@@ -663,5 +683,15 @@ struct Mesh {
         bvh.nodes = CUBE_BVH_NODES;
         bvh.node_count = 11;
         bvh.height = 5;
+    }
+
+    void loadTriangle() {
+        new(this)Mesh(
+            1, 3, 0, 0, 0, 3, 
+            (vec3*)TRIANGLE_VERTEX_POSITIONS, nullptr, nullptr, nullptr, 
+            (TriangleVertexIndices*)TRIANGLE_VERTEX_POSITION_INDICES, nullptr, nullptr, nullptr, 
+            (EdgeVertexIndices*)TRIANGLE_EDGES, 
+            {}
+        );
     }
 };

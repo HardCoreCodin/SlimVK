@@ -57,13 +57,22 @@ namespace default_material {
         DescriptorSetLayoutBindingForFragmentImageAndSampler(),
         DescriptorSetLayoutBindingForFragmentImageAndSampler()
     };
+    VkDescriptorSetLayoutBinding directional_shadow_map_descriptor_set_layout_bindings[]{
+        DescriptorSetLayoutBindingForFragmentImageAndSampler()
+    };
+
     constexpr u8 descriptor_set_binding_count = sizeof(descriptor_set_layout_bindings) / sizeof(VkDescriptorSetLayoutBinding);
+    constexpr u8 directional_shadow_map_descriptor_set_binding_count = sizeof(directional_shadow_map_descriptor_set_layout_bindings) / sizeof(VkDescriptorSetLayoutBinding);
+    
     DescriptorSetLayout descriptor_set_layout{descriptor_set_layout_bindings, descriptor_set_binding_count, true};
     DescriptorSetLayout ibl_descriptor_set_layout{descriptor_set_layout_bindings, descriptor_set_binding_count, true};
+    DescriptorSetLayout directional_shadow_map_descriptor_set_layout{directional_shadow_map_descriptor_set_layout_bindings, directional_shadow_map_descriptor_set_binding_count, true};
     DescriptorPool descriptor_set_pool;
+    DescriptorPool directional_shadow_map_descriptor_set_pool;
     DescriptorPool ibl_descriptor_set_pool;
     VkDescriptorSet descriptor_sets[16];
     VkDescriptorSet ibl_descriptor_sets[16];
+    VkDescriptorSet directional_shadow_map_descriptor_sets[16];
     PipelineLayout pipeline_layout{};
     GraphicsPipeline pipeline{};
     GraphicsPipeline debug_pipeline{};
@@ -71,6 +80,7 @@ namespace default_material {
     bool create(
         const GPUImage *textures, u8 texture_count, 
         const GPUImage *ibl_maps, u8 ibl_map_count, 
+        const ShadowMap *directional_shadow_maps, 
         RenderPass *render_pass = &present::render_pass) {
         const u8 material_instances_count = texture_count / 2;
 
@@ -92,10 +102,14 @@ namespace default_material {
         if (!ibl_descriptor_set_layout.create())
             return false;
 
+        if (!directional_shadow_map_descriptor_set_layout.create())
+            return false;
+
         VkDescriptorSetLayout descriptor_set_layouts[]{ 
             raster_render_pipeline::descriptor_set_layout.handle, 
             descriptor_set_layout.handle, 
-            ibl_descriptor_set_layout.handle
+            ibl_descriptor_set_layout.handle,
+            directional_shadow_map_descriptor_set_layout.handle
         };
         if (!pipeline_layout.create(
             descriptor_set_layouts, 
@@ -103,10 +117,10 @@ namespace default_material {
             &push_constant_spec))
             return false;
 
-        if (!pipeline.create(render_pass->handle, pipeline_layout.handle, vertex_shader, fragment_shader))
+        if (!pipeline.create(render_pass->handle, pipeline_layout.handle, &vertex_shader, &fragment_shader))
             return false;
 
-        if (!debug_pipeline.create(render_pass->handle, pipeline_layout.handle, vertex_shader, debug_shader))
+        if (!debug_pipeline.create(render_pass->handle, pipeline_layout.handle, &vertex_shader, &debug_shader))
             return false;
 
         if (!descriptor_set_pool.createAndAllocate(descriptor_set_layout, descriptor_sets, material_instances_count))
@@ -125,6 +139,16 @@ namespace default_material {
             ibl_maps[i * 2 + 1].writeDescriptor(ibl_descriptor_sets[i], 1);
         }
 
+        if (!directional_shadow_map_descriptor_set_pool.createAndAllocate(directional_shadow_map_descriptor_set_layout, directional_shadow_map_descriptor_sets, VULKAN_MAX_FRAMES_IN_FLIGHT))
+            return false;
+
+        for (u8 i = 0; i < VULKAN_MAX_FRAMES_IN_FLIGHT; i++) {        
+            directional_shadow_maps[i].image.writeDescriptor(
+                directional_shadow_map_descriptor_sets[i], 0, 
+                VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL
+            );
+        }
+
         return true;
     }
 
@@ -136,6 +160,8 @@ namespace default_material {
         descriptor_set_pool.destroy();
         ibl_descriptor_set_layout.destroy();
         ibl_descriptor_set_pool.destroy();
+        directional_shadow_map_descriptor_set_layout.destroy();
+        directional_shadow_map_descriptor_set_pool.destroy();
         vertex_shader.destroy();
         fragment_shader.destroy();
         debug_shader.destroy();
@@ -157,7 +183,11 @@ namespace default_material {
         pipeline_layout.bind(ibl_descriptor_sets[ibl_index], command_buffer, 2);
     }
 
-    void setModel(const GraphicsCommandBuffer &command_buffer, const Transform &transform, const MaterialParams &material_params, u8 flags = 0) {
+    void bindDirectionalShadowMap(const GraphicsCommandBuffer &command_buffer) {
+        pipeline_layout.bind(directional_shadow_map_descriptor_sets[present::current_frame], command_buffer, 3);
+    }
+
+    void setModel(const GraphicsCommandBuffer &command_buffer, const Transform &transform, const MaterialParams &material_params, u32 flags = 0) {
         push_constant.transform = transform;
         push_constant.material_params = material_params;
         if (flags) push_constant.material_params.flags = flags;

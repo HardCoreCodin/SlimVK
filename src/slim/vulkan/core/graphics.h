@@ -22,20 +22,25 @@ namespace gpu {
             vkCmdSetScissor(handle, 0, 1, &rect);
         }
 
-        void setViewportAndScissor(const VkRect2D &rect) {
+        void setViewportAndScissor(const VkRect2D &rect, bool flip_vertically = true) {
             VkViewport viewport{};
             viewport.x = (float)rect.offset.x;
-            viewport.y = (float)rect.offset.y + (float)rect.extent.height;
+            viewport.y = (float)rect.offset.y;
             viewport.width = (float)rect.extent.width;
-            viewport.height = -(float)rect.extent.height;
+            viewport.height = (float)rect.extent.height;
             viewport.minDepth = 0.0f;
             viewport.maxDepth = 1.0f;
+            if (flip_vertically)
+            {
+                viewport.height = -viewport.height;
+                viewport.y += (float)rect.extent.height;
+            }
 
             setViewport(viewport);
             setScissor(rect);
         }
 
-        bool beginRenderPass(const RenderPass &renderpass, const FrameBuffer &framebuffer, const VkRect2D &rect) { //, RenderTarget &render_target) {
+        bool beginRenderPass(const RenderPass &renderpass, const FrameBuffer &framebuffer, const VkRect2D &rect, bool flip_vertically = true) { //, RenderTarget &render_target) {
             // Begin the render pass.
             VkRenderPassBeginInfo begin_info = {VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
             begin_info.renderPass = renderpass.handle;
@@ -71,7 +76,7 @@ namespace gpu {
 
             begin_info.pClearValues = begin_info.clearValueCount > 0 ? clear_values : nullptr;
 
-            setViewportAndScissor(rect);
+            setViewportAndScissor(rect, flip_vertically);
 
             vkCmdBeginRenderPass(handle, &begin_info, VK_SUBPASS_CONTENTS_INLINE);
             state = State::InRenderPass;
