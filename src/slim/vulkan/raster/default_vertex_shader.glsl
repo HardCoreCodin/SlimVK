@@ -46,21 +46,6 @@ layout(push_constant) uniform Model {
     ModelMaterialParams material_params;
 } model;
 
-//vec3 rotate(vec3 V, vec4 q) {
-//    vec3 result = cross(q.xyz, V);
-//    return V + 2.0f * (result * q.a + cross(q.xyz, result));
-//}
-//vec3 rotate(vec3 v, vec4 q) {
-//    //    vec3 result = cross(q.xyz, V);
-//    //  return V + 2.0f * (result * q.w + cross(q.xyz, result));
-//    vec3 result = cross(q.xyz, v);
-//    vec3 qqv = cross(q.xyz, result);
-//    result = result * q.w + qqv;
-//    result = result * 2.0f + v;
-//    return result;
-//    return v + 2.0f * cross(q.xyz, cross(q.xyz, v) + q.w * v);
-//}
-
 vec3 Cross(vec3 lhs, vec3 rhs) {
     return vec3(
     (lhs.y * rhs.z) - (lhs.z * rhs.y),
@@ -75,19 +60,7 @@ vec3 rotate(vec3 v, vec4 q) {
     vec3 qqv = Cross(axis, result);
     result = (result * amount) + qqv;
     result = (result * 2.0f) +  v;
-
-    //    v = normalize(v);
-    //    vec3 axis = q.xyz;
-    //    float amount = q.w;
-    //    vec3 result = cross(axis, v);
-    //    vec3 qqv = cross(axis, result);
-    //    result = result * amount + qqv;
-    //    result = result * 2.0f + v;
     return result;
-    //
-    //    return V + 2.0f * (result * q.a + cross(q.xyz, result));
-    //    return v + 2.0f * (cross(q.xyz, cross(q.xyz, v ) + q.w * v));
-    //    return v + 2.0f * (cross(q.xyz, cross(q.xyz, v)) + q.w * cross(q.xyz, v));
 }
 
 void main() {
@@ -97,10 +70,9 @@ void main() {
         out_tangent = rotate(in_tangent * model.transform.scale, model.transform.rotation);
         out_uv = in_uv;
         gl_Position = camera.projection * camera.view * vec4(out_position, 1.0);
-        gl_Position.z = (gl_Position.z + gl_Position.w) / 2.0;
     } else {
         vec2 vertices[3] = vec2[3](vec2(-1, -1), vec2(3, -1), vec2(-1, 3));
-        vec2 uv = vertices[gl_VertexIndex];//vec2((gl_VertexIndex << 1) & 2, gl_VertexIndex & 2);
+        vec2 uv = vertices[gl_VertexIndex];
         out_position = vec3(uv, 0);
         gl_Position = vec4(uv, 0, 1);
     }

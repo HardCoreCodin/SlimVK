@@ -26,7 +26,9 @@ struct Viewport {
     }
 
     void updateProjection() {
-        frustum.updateProjection(camera->focal_length, dimensions.height_over_width);
+        frustum.projection.params.focal_length = camera->focal_length;
+        frustum.projection.params.height_over_width = dimensions.height_over_width;
+        frustum.projection.update(frustum.projection.params);
     }
 
     void updateDimensions(u16 width, u16 height) {

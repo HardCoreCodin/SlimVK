@@ -81,12 +81,13 @@ struct DirectionalLight : BaseLight {
         orientation{orientation}
     {}
 
-    mat4 shadowProjectionMatrix() const {
+    mat4 shadowProjectionMatrix(bool to_cube = true) const {
         return Mat4(ProjectionParams::makeOrthographic(
             shadow_bounds.width, 
             shadow_bounds.height, 
             shadow_bounds.near_distance, 
-            shadow_bounds.far_distance
+            shadow_bounds.far_distance,
+            to_cube
         ));
     }
 
@@ -95,7 +96,7 @@ struct DirectionalLight : BaseLight {
     }
 
     mat4 shadowMapMatrix() const {
-        return transformationMatrix().inverted() * shadowProjectionMatrix();
+        return transformationMatrix().inverted() * shadowProjectionMatrix(false);
     }
 
     mat4 shadowBoundsMatrix() const {

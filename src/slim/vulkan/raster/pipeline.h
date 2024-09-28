@@ -62,13 +62,14 @@ namespace raster_render_pipeline {
         lights_uniform_buffers[present::current_frame].upload(&lights_uniform_data);
     }
 
-    void update(const Scene &scene, const Viewport &viewport) {
+    void update(const Scene &scene, const Viewport &viewport, f32 IBL_intensity = 1.0f) {
         update(Mat4(viewport.frustum.projection),
             Mat4(*viewport.camera).inverted(),
             viewport.camera->position,
             scene.point_lights,
             (u8)scene.counts.point_lights,
-            scene.directional_lights[0]);
+            scene.directional_lights[0],
+            IBL_intensity);
     }
 
     bool create() {

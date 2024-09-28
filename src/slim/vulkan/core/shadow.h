@@ -24,26 +24,13 @@ out gl_PerVertex
 };
 void main() {
 	gl_Position = push_constant.mvp * vec4(in_position, 1.0);
-	gl_Position.z = (gl_Position.z + gl_Position.w) / 2.0;
 })VERTEX_SHADER";
-/*
-		const char* fragment_shader_string = R"FRAGMENT_SHADER(#version 450
-#extension GL_ARB_separate_shader_objects : enable
 
-layout(location = 0) out vec4 color;
-
-void main() 
-{	
-	color = vec4(1.0, 0.0, 0.0, 1.0);
-})FRAGMENT_SHADER";
-*/
 		struct PushConstant {
 			alignas(16) mat4 mvp;
 		};
 		PushConstant push_constant;
 		PushConstantSpec push_constant_spec{{PushConstantRangeForVertex(sizeof(PushConstant))}};
-
-
 
 		struct TriangleVertex {
 			vec3 position{};
@@ -58,30 +45,17 @@ void main()
 			}
 		};
 		VertexShader vertex_shader{};
-		//FragmentShader fragment_shader{};
-
 		PipelineLayout pipeline_layout{};
 		GraphicsPipeline pipeline{};
-
 		RenderPass render_pass;
 
 		bool create() {
 			render_pass.createShadowPass();
 
-			if (vertex_shader.handle)
-				return true;
-
-			if (!vertex_shader.createFromSourceString(vertex_shader_string, &vertex_descriptor, "shadow_pass_vertex_shader"))
-				return false;
-
-			//if (!fragment_shader.createFromSourceString(fragment_shader_string, "shadow_pass_fragment_shader"))
-			//	return false;
-
-			if (!pipeline_layout.create(nullptr, 0, &push_constant_spec))
-				return false;
-
-			if (!pipeline.create(render_pass.handle, pipeline_layout.handle, &vertex_shader));//, &fragment_shader))
-				return false;
+			if (vertex_shader.handle) return true;
+			if (!vertex_shader.createFromSourceString(vertex_shader_string, &vertex_descriptor, "shadow_pass_vertex_shader")) return false;
+			if (!pipeline_layout.create(nullptr, 0, &push_constant_spec)) return false;
+			if (!pipeline.create(render_pass.handle, pipeline_layout.handle, &vertex_shader)) return false;
 
 			return true;
 		}
@@ -89,7 +63,6 @@ void main()
 		void destroy() {
 			pipeline.destroy();
 			pipeline_layout.destroy();
-			//fragment_shader.destroy();
 			vertex_shader.destroy();
 			render_pass.destroy();
 		}
@@ -110,17 +83,19 @@ void main()
 			this->bias_constant = bias_constant;
 			this->bias_slope = bias_slope;
 
+			const u8 flags = (
+				(u8)GPUImageFlag::SAMPLE | 
+				(u8)GPUImageFlag::FILTER | 
+				(u8)GPUImageFlag::VIEW
+			);
+			const VkImageUsageFlags usage_flags = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
 			image.create(
 				width, 
 				height,
 				present::depth_format,
-				(
-					(u8)GPUImageFlag::SAMPLE | 
-					(u8)GPUImageFlag::FILTER | 
-					(u8)GPUImageFlag::VIEW
-				),
+				flags,
 				image_name,
-                VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+                usage_flags,
                 VK_IMAGE_ASPECT_DEPTH_BIT
 			);
 

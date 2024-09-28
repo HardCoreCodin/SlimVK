@@ -23,6 +23,7 @@
 #define DRAW_ALBEDO 64
 #define DRAW_IBL 128
 #define DRAW_SHADOW_MAP 256
+#define DRAW_SHADOW_MAP_PROJECTED 512
 
 using namespace gpu;
 
@@ -103,7 +104,7 @@ struct ExampleVulkanApp : SlimApp {
     SceneTracer scene_tracer{scene.counts.geometries, scene.mesh_stack_size};
     Selection selection{scene, scene_tracer, camera_ray_projection};
 
-    u32 debug_flags = DRAW_SHADOW_MAP;
+    u32 debug_flags = DRAW_SHADOW_MAP_PROJECTED;
     u32 debug_maps = 0;
 
     default_material::MaterialParams dog_material_params = {
@@ -142,21 +143,22 @@ struct ExampleVulkanApp : SlimApp {
     ShadowMap directional_shadhow_maps[VULKAN_MAX_FRAMES_IN_FLIGHT];
 
     u32 skybox_index = 0;
+    f32 IBL_intensity = 1.0f;
 
     void initTextures(CubeMapSet *cube_map_sets, u32 cube_map_sets_count, RawImage *texture_images, u32 texture_count) {
 	    if (texture_images && texture_count) {
 		    textures = new GPUImage[texture_count];
 		    for (u32 i = 0; i < texture_count; i++)
-                textures[i].createTexture(texture_images[i]);//, image_file_names[i]);
+                textures[i].createTexture(texture_images[i]);
         }
 			
 	    if (cube_map_sets && cube_map_sets_count) {
 		    skybox_maps = new GPUImage[cube_map_sets_count];
 		    ibl_maps = new GPUImage[cube_map_sets_count * 2];
 		    for (u32 i = 0; i < cube_map_sets_count; i++) {
-                skybox_maps[i].createCubeMap(cube_map_sets[i].skybox);//, cube_map_sets_names[i][0]);
-                ibl_maps[i * 2 + 0].createCubeMap(cube_map_sets[i].radiance);//, cube_map_sets_names[i][1]);
-                ibl_maps[i * 2 + 1].createCubeMap(cube_map_sets[i].irradiance);//, cube_map_sets_names[i][2]);
+                skybox_maps[i].createCubeMap(cube_map_sets[i].skybox);
+                ibl_maps[i * 2 + 0].createCubeMap(cube_map_sets[i].radiance);
+                ibl_maps[i * 2 + 1].createCubeMap(cube_map_sets[i].irradiance);
 		    }
 	    }  
     }
@@ -194,7 +196,7 @@ struct ExampleVulkanApp : SlimApp {
         if (!mouse::is_captured) selection.manipulate(viewport);
         if (!controls::is_pressed::alt) viewport.updateNavigation(delta_time);
 
-        raster_render_pipeline::update(scene, viewport);
+        raster_render_pipeline::update(scene, viewport, IBL_intensity);
     }
     
     virtual void OnRender() {
@@ -209,7 +211,6 @@ struct ExampleVulkanApp : SlimApp {
                 floor_gpu_mesh.vertex_buffer.draw(command_buffer);
             } 
             else {
-                //continue;
                 if (g == Dog) default_material::bindTextures(command_buffer, 1);
                 for (u32 m = 0, first_index = 0; m < (MeshCount - 1); m++) {
                     u32 vertex_count = mesh_group.mesh_triangle_counts[m] * 3;
@@ -223,9 +224,6 @@ struct ExampleVulkanApp : SlimApp {
         directional_shadhow_maps[present::current_frame].endWrite(command_buffer);
 
         gpu::beginRenderPass();
-        //debug_image::draw(command_buffer, present::current_frame);
-        //gpu::endRenderPass();
-        //return;
       
         if (debug_flags == 0) {
             mat3 camera_ray_matrix = camera.orientation;
@@ -244,8 +242,6 @@ struct ExampleVulkanApp : SlimApp {
             scene.directional_lights[0]);
             default_material::setModel(command_buffer, {}, {}, debug_maps | debug_flags);
             default_material::bindTextures(command_buffer, 0);
-            //triangle_gpu_mesh.vertex_buffer.bind(command_buffer);
-            //triangle_gpu_mesh.vertex_buffer.draw(command_buffer);
             vkCmdDraw(command_buffer.handle, 3, 1, 0, 0);
             gpu::endRenderPass();
             return;
@@ -322,11 +318,19 @@ struct ExampleVulkanApp : SlimApp {
             if (key == '6') {debug_flags = DRAW_NORMAL;   debug_maps = HAS_NORMAL_MAP; }
             if (key == '8') {debug_flags = DRAW_ALBEDO;   debug_maps = HAS_ALBEDO_MAP; }
             if (key == '9') {debug_flags = DRAW_SHADOW_MAP;debug_maps = 0; }
+            if (key == '0') {debug_flags = DRAW_SHADOW_MAP_PROJECTED;debug_maps = 0; }
             if (key == 'B') skybox_index = (skybox_index + 1) % 2;
             if (key == 'Z') {dog_material_params.normal_strength -= 0.2f; if (dog_material_params.normal_strength < 0.0f) dog_material_params.normal_strength = 0.0f; }
             if (key == 'X') {dog_material_params.normal_strength += 0.2f; if (dog_material_params.normal_strength > 4.0f) dog_material_params.normal_strength = 4.0f; }
             if (key == 'C') {floor_material_params.normal_strength -= 0.2f; if (floor_material_params.normal_strength < 0.0f) floor_material_params.normal_strength = 0.0f; }
             if (key == 'V') {floor_material_params.normal_strength += 0.2f; if (floor_material_params.normal_strength > 4.0f) floor_material_params.normal_strength = 4.0f; }
+            if (key == 'I') IBL_intensity += controls::is_pressed::ctrl ? -0.1f : 0.1f;
+            if (key == 'L') directional_light.intensity += controls::is_pressed::ctrl ? -0.1f : 0.1f;
+            if (IBL_intensity < 0.0f)
+                IBL_intensity = 0.0f;
+            if (directional_light.intensity < 0.0f)
+                directional_light.intensity = 0.0f;
+
         }
         if (controls::is_pressed::shift)
         {

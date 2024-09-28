@@ -659,7 +659,7 @@ struct ProjectionParams {
     float far_distance;
     union {
         float width;
-        float focal_length;
+        float focal_length = CAMERA_DEFAULT__FOCAL_LENGTH;
     };
     union {
         float height;
@@ -669,11 +669,11 @@ struct ProjectionParams {
     bool to_cube;
 
     static ProjectionParams makePerspective(
-        float focal_length = 2.0f, 
-        float height_over_width = 1.0f,
-        float near_distance = 0.001f,
-        float far_distance = 100.0f,
-        bool to_cube = true) {
+        float focal_length = CAMERA_DEFAULT__FOCAL_LENGTH, 
+        float height_over_width = (f32)DEFAULT_HEIGHT / (f32)DEFAULT_WIDTH,
+        float near_distance = VIEWPORT_DEFAULT__NEAR_CLIPPING_PLANE_DISTANCE,
+        float far_distance = VIEWPORT_DEFAULT__FAR_CLIPPING_PLANE_DISTANCE,
+        bool to_cube = false) {
         return {near_distance, far_distance, focal_length, height_over_width, true, to_cube};
     }
 

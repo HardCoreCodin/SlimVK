@@ -148,8 +148,8 @@ float calcShadowFactorForDirectionalLight(vec3 lightDir, vec3 N)
 {
     vec4 directional_light_space_pos = lighting.directional_light_transform * vec4(in_position, 1.0);
 	vec3 projCoords = directional_light_space_pos.xyz / directional_light_space_pos.w;
-	projCoords = projCoords * 0.5 + 0.5;
 	float currentDepth = projCoords.z;	
+	projCoords = projCoords * 0.5 + 0.5;
 	float closestDepth = texture(directional_shadow_map_texture, projCoords.xy).r;
 	
 	float bias = max(0.05 * (1.0 - dot(N, lightDir)), 0.0005);
@@ -205,9 +205,6 @@ void main() {
     const vec3 P = in_position;
     vec3 N = normalize(in_normal);
     if ((model.material_params.flags & HAS_NORMAL_MAP) != 0) {
-        //vec3 T = normalize(in_tangent);
-        //vec3 B = cross(T, N);
-        //N = normalize(mat3(T, B, N) * decodeNormal(texture(normal_texture, in_uv)));
         N = normalize(rotateNormal(N, texture(normal_texture, in_uv), model.material_params.normal_strength));
     }
 
@@ -238,129 +235,4 @@ void main() {
 	} 
 
     out_color = vec4(toneMapped(color), 1.0f);
-    return;
-    vec4 directional_light_space_pos = lighting.directional_light_transform * vec4(in_position, 1.0);
-	vec3 projCoords = directional_light_space_pos.xyz / directional_light_space_pos.w;
-	projCoords = projCoords * 0.5 + 0.5;
-    /*out_color = vec4(projCoords.xy, 0.0f, 1.0f);
-    if (out_color.r < 0.0f ||
-        out_color.r > 1.0f ||
-        out_color.g < 0.0f ||
-        out_color.g > 1.0f )
-    {
-        out_color.g = 0.0f;
-        out_color.r = out_color.b = 1.0f;  
-    }
-    return;*/
-    //else
-    {
-	    float closestDepth = texture(directional_shadow_map_texture, projCoords.xy).r;
-        if (closestDepth < 0.0f ||
-            closestDepth > 1.0f)
-        {
-            out_color.g = 0.0f;
-            out_color.r = out_color.b = 1.0f;  
-        }
-        else
-            out_color = vec4(vec3(closestDepth), 1.0f);
-    }
 }
-
-
-/*
-vec4 quat_from_axis_angle(vec3 axis, float angle)
-{
-    vec4 qr;
-    float half_angle = (angle * 0.5);
-    qr.x = axis.x * sin(half_angle);
-    qr.y = axis.y * sin(half_angle);
-    qr.z = axis.z * sin(half_angle);
-    qr.w = cos(half_angle);
-    return qr;
-}
-
-vec4 quat_conj(vec4 q)
-{
-    return vec4(-q.x, -q.y, -q.z, q.w);
-}
-
-vec4 quat_mult(vec4 q1, vec4 q2)
-{
-    vec4 qr;
-    qr.x = (q1.w * q2.x) + (q1.x * q2.w) + (q1.y * q2.z) - (q1.z * q2.y);
-    qr.y = (q1.w * q2.y) - (q1.x * q2.z) + (q1.y * q2.w) + (q1.z * q2.x);
-    qr.z = (q1.w * q2.z) + (q1.x * q2.y) - (q1.y * q2.x) + (q1.z * q2.w);
-    qr.w = (q1.w * q2.w) - (q1.x * q2.x) - (q1.y * q2.y) - (q1.z * q2.z);
-    return qr;
-}
-
-vec3 rotate_vertex_position(vec3 position, vec4 qr)
-{
-    vec4 qr_conj = quat_conj(qr);
-    vec4 q_pos = vec4(position.x, position.y, position.z, 0);
-
-    vec4 q_tmp = quat_mult(qr, q_pos);
-    qr = quat_mult(q_tmp, qr_conj);
-
-    return vec3(qr.x, qr.y, qr.z);
-}
-
-vec3 rotate(vec3 v, vec4 q) {
-    v = normalize(v);
-    vec3 axis = q.xyz;
-    float amount = q.w;
-    vec3 result = cross(axis, v);
-    vec3 qqv = cross(axis, result);
-    result = result * amount + qqv;
-    result = result * 2.0f + v;
-    return result;
-    //
-    //    return V + 2.0f * (result * q.a + cross(q.xyz, result));
-    //    return v + 2.0f * (cross(q.xyz, cross(q.xyz, v ) + q.w * v));
-    //    return v + 2.0f * (cross(q.xyz, cross(q.xyz, v)) + q.w * cross(q.xyz, v));
-}
-
-vec4 getRotationFromAxisAndAngle(vec3 axis, float radians) {
-    radians *= 0.5f;
-    vec4 q;
-    q.xyz = sin(radians) * axis;
-    q.w   = cos(radians);
-    return normalize(q);
-    //    return normalize(vec4(axis * sqrt(1.0f - cos_radians*cos_radians), cos_radians));
-}
-//vec3 rotate(vec3 v, vec4 q) {
-////    return rotate_vertex_position(v, q);
-//    //    vec3 result = cross(q.xyz, V);
-//    //  return V + 2.0f * (result * q.w + cross(q.xyz, result));
-//    return v + 2.0f * (cross(q.xyz, cross(q.xyz, v)) + q.w * cross(q.xyz, v));
-////    return v + 2.0f * (cross(q.xyz, cross(q.xyz, v ) + q.w * v));
-//}
-
-vec4 quat(vec3 v1, vec3 v2) {
-    //    vec4 q;
-    //    vec3 a = cross(v1, v2);
-    //    q.xyz = a;
-    //    q.w = sqrt(dot(v1, v1) * dot(v2, v2)) + dot(v1, v2);
-    return normalize(vec4(cross(v1, v2), sqrt(dot(v1, v1) * dot(v2, v2)) + dot(v1, v2)));
-}
-
-vec4 getNormalRotation(vec3 N, float magnitude) {
-    vec3 Nt = vec3(0.0f, 1.0f, 0.0f);
-    vec3 axis = cross(N, Nt);
-    float l = length(axis);
-    axis /= l;
-    float angle = asin(l) * magnitude;// acos(dot(N, Nt)) * magnitude;
-    return quat_from_axis_angle(axis, angle);
-    //    return getRotationFromAxisAndAngle(normalize(vec3(N.z, 0, -N.x)), acos(N.y) * magnitude);
-}
-vec3 rotateNormal(vec3 Nm, float magnitude, vec3 Ng) {
-    return rotate(Nm, getNormalRotation(Ng, 1.0f));//quat(vec3(0.0f, 0.0f, 1.0f), Nm));
-}
-
-// axis      = up ^ normal = [0, 1, 0] ^ [x, y, z] = [1*z - 0*y, 0*x - 0*z, 0*y - 1*x] = [z, 0, -x]
-// cos_angle = up . normal = [0, 1, 0] . [x, y, z] = 0*x + 1*y + 0*z = y
-// (Pre)Swizzle N.z <-> N.y
-//vec3 rotateNormal(const vec3 normal, vec3 normal_sample, float magnitude) {
-//    return rotate(normal, getNormalRotation(normal_sample, magnitude));
-//}
-*/

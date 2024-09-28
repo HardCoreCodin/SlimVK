@@ -4,26 +4,12 @@
 
 
 struct Frustum {
-    Projection projection{
-            CAMERA_DEFAULT__FOCAL_LENGTH,
-            (f32)DEFAULT_HEIGHT / (f32)DEFAULT_WIDTH,
-            VIEWPORT_DEFAULT__NEAR_CLIPPING_PLANE_DISTANCE,
-            VIEWPORT_DEFAULT__FAR_CLIPPING_PLANE_DISTANCE
-    };
-
-    f32 near_clipping_plane_distance{VIEWPORT_DEFAULT__NEAR_CLIPPING_PLANE_DISTANCE};
-    f32 far_clipping_plane_distance{ VIEWPORT_DEFAULT__FAR_CLIPPING_PLANE_DISTANCE};
-    bool flip_z{false}, cull_back_faces{true};
-
-    void updateProjection(f32 focal_length, f32 height_over_width) {
-        projection.update(focal_length,
-                          height_over_width,
-                          near_clipping_plane_distance,
-                          far_clipping_plane_distance);
-    }
+    Projection projection{ProjectionParams::makePerspective()};
+    bool flip_z{false};
+    bool cull_back_faces{true};
 
     bool cullAndClipEdge(Edge &edge, f32 focal_length, f32 aspect_ratio) const {
-        f32 distance = near_clipping_plane_distance;
+        f32 distance = projection.params.near_distance;
 
         vec3 A{edge.from};
         vec3 B{edge.to};
@@ -35,7 +21,7 @@ struct Frustum {
             else         B = B.lerpTo(A, (distance - B.z) / (A.z - B.z));
         }
 
-        distance = far_clipping_plane_distance;
+        distance = projection.params.far_distance;
         out = (A.z > distance) | ((B.z > distance) << 1);
         if (out) {
             if (out == 3) return false;
@@ -101,10 +87,10 @@ struct Frustum {
         from_sides.mask = 0;
         to_sides.mask = 0;
 
-        from_sides.back = edge.from.z < near_clipping_plane_distance;
-        to_sides.back = edge.to.z < near_clipping_plane_distance;
-        from_sides.front = edge.from.z > far_clipping_plane_distance;
-        to_sides.front = edge.to.z > far_clipping_plane_distance;
+        from_sides.back = edge.from.z < projection.params.far_distance;
+        to_sides.back = edge.to.z < projection.params.near_distance;
+        from_sides.front = edge.from.z > projection.params.far_distance;
+        to_sides.front = edge.to.z > projection.params.near_distance;
 
         // Left plane (facing to the right):
         vec3 N{focal_length, 0, aspect_ratio};
